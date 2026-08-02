@@ -7,7 +7,9 @@ SAMPLES_DIR = Path(__file__).parent.parent / "samples"
 
 
 def test_extracts_text_from_digital_pdf() -> None:
-    result = extract_pdf_text(SAMPLES_DIR / "test.pdf")
+    result = extract_pdf_text(
+        SAMPLES_DIR / "sample_invoice_1.pdf"
+    )
 
     assert result.source.source_type == "pdf"
     assert result.processing.extraction_method == "embedded_text"
@@ -18,7 +20,9 @@ def test_extracts_text_from_digital_pdf() -> None:
 
 
 def test_detects_pdf_without_text_layer() -> None:
-    result = extract_pdf_text(SAMPLES_DIR / "test2.pdf")
+    result = extract_pdf_text(
+        SAMPLES_DIR / "sample_invoice_1_scan.pdf"
+    )
 
     assert result.source.source_type == "pdf"
     assert result.processing.extraction_method == "no_text_layer"

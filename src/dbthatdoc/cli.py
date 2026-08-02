@@ -1,0 +1,69 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Annotated
+
+import typer
+
+from dbthatdoc.pipeline import inspect_file
+
+app = typer.Typer(
+    name="dbthatdoc",
+    help="Lokale Informationsgewinnung aus Dateien und Medien.",
+    no_args_is_help=True,
+)
+
+@app.callback()
+def main() -> None:
+    """dbthatdoc verarbeitet Dateien und Medien lokal."""
+
+
+@app.command()
+def inspect(
+    file_path: Annotated[
+        Path,
+        typer.Argument(
+            help="Pfad zu der zu untersuchenden Datei.",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+            resolve_path=True,
+        ),
+    ],
+    pretty: Annotated[
+        bool,
+        typer.Option(
+            "--pretty/--compact",
+            help="JSON formatiert oder kompakt ausgeben.",
+        ),
+    ] = True,
+) -> None:
+    """Untersucht eine Datei und gibt das Ergebnis als JSON aus."""
+
+    try:
+        result = inspect_file(file_path)
+    except (FileNotFoundError, ValueError) as error:
+        typer.echo(f"Fehler: {error}", err=True)
+        raise typer.Exit(code=1) from error
+    except Exception as error:
+        typer.echo(
+            f"Die Datei konnte nicht verarbeitet werden: {error}",
+            err=True,
+        )
+        raise typer.Exit(code=2) from error
+
+    output = result.model_dump(mode="json")
+
+    typer.echo(
+        json.dumps(
+            output,
+            ensure_ascii=False,
+            indent=2 if pretty else None,
+        )
+    )
+
+
+if __name__ == "__main__":
+    app()

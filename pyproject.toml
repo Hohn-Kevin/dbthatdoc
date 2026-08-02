@@ -1,0 +1,36 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "dbthatdoc"
+version = "0.1.0"
+description = "Local information extraction engine for documents and media."
+readme = "README.md"
+requires-python = ">=3.13"
+license = { text = "Apache-2.0" }
+authors = [
+    { name = "Kevin Hohn" }
+]
+dependencies = [
+    "pdfplumber>=0.11,<0.12",
+    "pydantic>=2,<3",
+    "typer>=0.16,<1",
+    "pytesseract>=0.3.13,<1",
+    "pypdfium2>=5.12,<6",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8,<10"
+]
+
+[project.scripts]
+dbthatdoc = "dbthatdoc.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dbthatdoc"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

@@ -5,6 +5,7 @@ from dbthatdoc.models import (
     DocumentPage,
     ExtractionResult,
     TextBlock,
+    TextPosition,
 )
 
 
@@ -14,20 +15,39 @@ def normalize_extraction(
     pages: list[DocumentPage] = []
 
     for page in result.pages:
-        block = TextBlock(
-            text=page.text,
-            page_number=page.page_number,
-            source=result.processing.extractor,
-            confidence=None,
-            position=None,
-        )
+        blocks: list[TextBlock] = [
+            TextBlock(
+                text=element.text,
+                page_number=page.page_number,
+                source=result.processing.extractor,
+                confidence=element.confidence,
+                position=TextPosition(
+                    x0=element.x0,
+                    y0=element.y0,
+                    x1=element.x1,
+                    y1=element.y1,
+                ),
+            )
+            for element in page.elements
+        ]
+
+        if not blocks and page.text.strip():
+            blocks = [
+                TextBlock(
+                    text=page.text,
+                    page_number=page.page_number,
+                    source=result.processing.extractor,
+                    confidence=None,
+                    position=None,
+                )
+            ]
 
         pages.append(
             DocumentPage(
                 page_number=page.page_number,
                 width=page.width,
                 height=page.height,
-                blocks=[block] if page.text.strip() else [],
+                blocks=blocks,
             )
         )
 

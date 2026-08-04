@@ -7,6 +7,7 @@ import pytesseract
 
 from dbthatdoc.extractors.pdf_text import calculate_sha256
 from dbthatdoc.models import (
+    ExtractedElement,
     ExtractionResult,
     PageContent,
     ProcessingInfo,
@@ -40,15 +41,63 @@ def extract_pdf_ocr(
             page = pdf[page_number]
             image = page.render(scale=scale).to_pil()
 
-            text = pytesseract.image_to_string(
+            ocr_data = pytesseract.image_to_data(
                 image,
                 lang=language,
                 config="--psm 6",
+                output_type=pytesseract.Output.DICT,
+            )
+
+            elements: list[ExtractedElement] = []
+            lines: dict[tuple[int, int, int], list[str]] = {}
+
+            for index, raw_text in enumerate(ocr_data["text"]):
+                text = str(raw_text).strip()
+
+                if not text:
+                    continue
+
+                left = int(ocr_data["left"][index])
+                top = int(ocr_data["top"][index])
+                width = int(ocr_data["width"][index])
+                height = int(ocr_data["height"][index])
+
+                raw_confidence = float(ocr_data["conf"][index])
+                confidence = (
+                    raw_confidence / 100.0
+                    if raw_confidence >= 0
+                    else None
+                )
+
+                elements.append(
+                    ExtractedElement(
+                        text=text,
+                        element_type="word",
+                        confidence=confidence,
+                        x0=float(left),
+                        y0=float(top),
+                        x1=float(left + width),
+                        y1=float(top + height),
+                    )
+                )
+
+                line_key = (
+                    int(ocr_data["block_num"][index]),
+                    int(ocr_data["par_num"][index]),
+                    int(ocr_data["line_num"][index]),
+                )
+
+                lines.setdefault(line_key, []).append(text)
+
+            text = "\n".join(
+                " ".join(words)
+                for words in lines.values()
             ).strip()
 
             if not text:
                 warnings.append(
-                    f"OCR konnte auf Seite {page_number + 1} keinen Text erkennen."
+                    f"OCR konnte auf Seite {page_number + 1} "
+                    "keinen Text erkennen."
                 )
 
             width, height = image.size
@@ -59,6 +108,7 @@ def extract_pdf_ocr(
                     text=text,
                     width=float(width),
                     height=float(height),
+                    elements=elements,
                 )
             )
     finally:
@@ -69,7 +119,9 @@ def extract_pdf_ocr(
     )
 
     if not combined_text:
-        warnings.append("OCR hat in der gesamten PDF keinen Text erkannt.")
+        warnings.append(
+            "OCR hat in der gesamten PDF keinen Text erkannt."
+        )
 
     return ExtractionResult(
         source=SourceInfo(

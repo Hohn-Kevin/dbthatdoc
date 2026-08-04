@@ -7,6 +7,7 @@ from pathlib import Path
 import pdfplumber
 
 from dbthatdoc.models import (
+    ExtractedElement,
     ExtractionResult,
     PageContent,
     ProcessingInfo,
@@ -43,6 +44,21 @@ def extract_pdf_text(file_path: str | Path) -> ExtractionResult:
     with pdfplumber.open(path) as pdf:
         for page_number, page in enumerate(pdf.pages, start=1):
             text = page.extract_text() or ""
+            words = page.extract_words() or []
+
+            elements = [
+                ExtractedElement(
+                    text=str(word["text"]),
+                    element_type="word",
+                    confidence=None,
+                    x0=float(word["x0"]),
+                    y0=float(word["top"]),
+                    x1=float(word["x1"]),
+                    y1=float(word["bottom"]),
+                )
+                for word in words
+                if str(word.get("text", "")).strip()
+            ]
 
             if not text.strip():
                 warnings.append(
@@ -55,6 +71,7 @@ def extract_pdf_text(file_path: str | Path) -> ExtractionResult:
                     text=text,
                     width=float(page.width),
                     height=float(page.height),
+                    elements=elements,
                 )
             )
 
@@ -64,7 +81,8 @@ def extract_pdf_text(file_path: str | Path) -> ExtractionResult:
 
     if not combined_text.strip():
         warnings.append(
-            "Die PDF enthält keinen eingebetteten Text. OCR ist vermutlich erforderlich."
+            "Die PDF enthält keinen eingebetteten Text. "
+            "OCR ist vermutlich erforderlich."
         )
 
     return ExtractionResult(
@@ -80,14 +98,14 @@ def extract_pdf_text(file_path: str | Path) -> ExtractionResult:
         text=combined_text,
         warnings=warnings,
         processing=ProcessingInfo(
-    		extractor="pdfplumber",
-    		extractor_version=getattr(pdfplumber, "__version__", None),
-    		page_count=len(pages),
-    		extraction_method=(
-        		"embedded_text"
-        		if combined_text.strip()
-        		else "no_text_layer"
-    		),
-    		text_extracted=bool(combined_text.strip()),
-	),
+            extractor="pdfplumber",
+            extractor_version=getattr(pdfplumber, "__version__", None),
+            page_count=len(pages),
+            extraction_method=(
+                "embedded_text"
+                if combined_text.strip()
+                else "no_text_layer"
+            ),
+            text_extracted=bool(combined_text.strip()),
+        ),
     )

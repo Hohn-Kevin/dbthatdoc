@@ -6,6 +6,7 @@ from dbthatdoc.models.content import (
 )
 
 from dbthatdoc.models.result import (
+    ExtractedElement,
     ExtractionResult,
     PageContent,
     ProcessingInfo,
@@ -17,6 +18,7 @@ __all__ = [
     "DocumentPage",
     "TextBlock",
     "TextPosition",
+    "ExtractedElement",
     "ExtractionResult",
     "PageContent",
     "ProcessingInfo",

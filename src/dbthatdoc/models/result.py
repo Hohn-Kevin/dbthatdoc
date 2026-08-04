@@ -12,11 +12,27 @@ class SourceInfo(BaseModel):
     sha256: str
 
 
+class ExtractedElement(BaseModel):
+    text: str
+    element_type: str
+    confidence: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+    )
+
+    x0: float | None = None
+    y0: float | None = None
+    x1: float | None = None
+    y1: float | None = None
+
+
 class PageContent(BaseModel):
     page_number: int = Field(ge=1)
     text: str
     width: float | None = None
     height: float | None = None
+    elements: list[ExtractedElement] = Field(default_factory=list)
 
 
 class ProcessingInfo(BaseModel):

@@ -18,6 +18,23 @@ def test_extracts_text_from_digital_pdf() -> None:
     assert "Rechnung" in result.text
     assert result.warnings == []
 
+    first_page = result.pages[0]
+
+    assert first_page.elements
+    assert first_page.elements[0].element_type == "word"
+    assert first_page.elements[0].text != ""
+    assert first_page.width is not None
+    assert first_page.height is not None
+
+    for element in first_page.elements:
+        assert element.x0 is not None
+        assert element.y0 is not None
+        assert element.x1 is not None
+        assert element.y1 is not None
+
+        assert 0 <= element.x0 < element.x1 <= first_page.width
+        assert 0 <= element.y0 < element.y1 <= first_page.height
+
 
 def test_detects_pdf_without_text_layer() -> None:
     result = extract_pdf_text(
@@ -30,3 +47,4 @@ def test_detects_pdf_without_text_layer() -> None:
     assert result.processing.page_count == 2
     assert result.text == ""
     assert any("OCR" in warning for warning in result.warnings)
+    assert result.pages[0].elements == []

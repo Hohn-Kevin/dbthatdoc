@@ -19,6 +19,7 @@ def test_pdf_result_can_be_normalized() -> None:
     assert content.full_text != ""
     assert len(content.extraction_methods) == 1
     assert content.pages[0].blocks[0].text != ""
+    assert content.pages[0].blocks[0].position is None
 
 
 def test_ocr_result_can_be_normalized() -> None:
@@ -32,3 +33,4 @@ def test_ocr_result_can_be_normalized() -> None:
     assert len(content.pages) == 2
     assert content.full_text != ""
     assert content.pages[0].blocks[0].source == "tesseract+pypdfium2"
+    assert content.pages[0].blocks[0].position is None

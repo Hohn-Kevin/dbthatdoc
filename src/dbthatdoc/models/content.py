@@ -3,17 +3,20 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 
+class TextPosition(BaseModel):
+    x0: float | None = None
+    y0: float | None = None
+    x1: float | None = None
+    y1: float | None = None
+
+
 class TextBlock(BaseModel):
     text: str
     page_number: int = Field(ge=1)
 
     source: str
     confidence: float | None = None
-
-    x0: float | None = None
-    y0: float | None = None
-    x1: float | None = None
-    y1: float | None = None
+    position: TextPosition | None = None
 
 
 class DocumentPage(BaseModel):

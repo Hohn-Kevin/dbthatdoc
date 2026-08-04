@@ -19,10 +19,7 @@ def normalize_extraction(
             page_number=page.page_number,
             source=result.processing.extractor,
             confidence=None,
-            x0=None,
-            y0=None,
-            x1=None,
-            y1=None,
+            position=None,
         )
 
         pages.append(

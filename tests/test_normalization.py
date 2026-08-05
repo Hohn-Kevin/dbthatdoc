@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from dbthatdoc.models import (
+    ExtractedElement,
     ExtractionResult,
     PageContent,
     ProcessingInfo,
@@ -29,16 +30,20 @@ def test_pdf_result_can_be_normalized() -> None:
     first_element = extraction.pages[0].elements[0]
     first_block = first_page.blocks[0]
 
-    assert len(first_page.blocks) == len(extraction.pages[0].elements)
+    assert len(first_page.blocks) < len(extraction.pages[0].elements)
     assert len(first_page.blocks) > 1
-    assert first_block.text == first_element.text
+    assert first_element.text in first_block.text
     assert first_block.source == "pdfplumber"
     assert first_block.confidence is None
     assert first_block.position is not None
-    assert first_block.position.x0 == first_element.x0
-    assert first_block.position.y0 == first_element.y0
-    assert first_block.position.x1 == first_element.x1
-    assert first_block.position.y1 == first_element.y1
+    assert first_block.position.x0 is not None
+    assert first_block.position.y0 is not None
+    assert first_block.position.x1 is not None
+    assert first_block.position.y1 is not None
+    assert first_block.position.x0 <= first_element.x0
+    assert first_block.position.y0 <= first_element.y0
+    assert first_block.position.x1 >= first_element.x1
+    assert first_block.position.y1 >= first_element.y1
 
 
 def test_ocr_result_can_be_normalized() -> None:
@@ -56,15 +61,19 @@ def test_ocr_result_can_be_normalized() -> None:
     first_element = extraction.pages[0].elements[0]
     first_block = first_page.blocks[0]
 
-    assert len(first_page.blocks) == len(extraction.pages[0].elements)
+    assert len(first_page.blocks) < len(extraction.pages[0].elements)
     assert len(first_page.blocks) > 1
-    assert first_block.text == first_element.text
+    assert first_element.text in first_block.text
     assert first_block.source == "tesseract+pypdfium2"
     assert first_block.position is not None
-    assert first_block.position.x0 == first_element.x0
-    assert first_block.position.y0 == first_element.y0
-    assert first_block.position.x1 == first_element.x1
-    assert first_block.position.y1 == first_element.y1
+    assert first_block.position.x0 is not None
+    assert first_block.position.y0 is not None
+    assert first_block.position.x1 is not None
+    assert first_block.position.y1 is not None
+    assert first_block.position.x0 <= first_element.x0
+    assert first_block.position.y0 <= first_element.y0
+    assert first_block.position.x1 >= first_element.x1
+    assert first_block.position.y1 >= first_element.y1
 
     block_with_confidence = next(
         block for block in first_page.blocks
@@ -73,6 +82,85 @@ def test_ocr_result_can_be_normalized() -> None:
 
     assert block_with_confidence.confidence is not None
     assert 0.0 <= block_with_confidence.confidence <= 1.0
+
+
+def test_normalization_groups_words_into_line_blocks() -> None:
+    extraction = ExtractionResult(
+        source=SourceInfo(
+            filename="lines.pdf",
+            path="lines.pdf",
+            media_type="application/pdf",
+            source_type="pdf",
+            file_size_bytes=1,
+            sha256="abc",
+        ),
+        pages=[
+            PageContent(
+                page_number=1,
+                text="Hello world\nNext",
+                elements=[
+                    ExtractedElement(
+                        text="world",
+                        element_type="word",
+                        confidence=0.7,
+                        x0=40.0,
+                        y0=10.0,
+                        x1=70.0,
+                        y1=20.0,
+                    ),
+                    ExtractedElement(
+                        text="Hello",
+                        element_type="word",
+                        confidence=0.5,
+                        x0=10.0,
+                        y0=10.0,
+                        x1=35.0,
+                        y1=20.0,
+                    ),
+                    ExtractedElement(
+                        text="Next",
+                        element_type="word",
+                        confidence=None,
+                        x0=10.0,
+                        y0=30.0,
+                        x1=35.0,
+                        y1=40.0,
+                    ),
+                ],
+            ),
+        ],
+        text="Hello world\nNext",
+        processing=ProcessingInfo(
+            extractor="test-extractor",
+            page_count=1,
+            extraction_method="test",
+            text_extracted=True,
+        ),
+    )
+
+    content = normalize_extraction(extraction)
+
+    assert len(content.pages[0].blocks) == 2
+
+    first_block = content.pages[0].blocks[0]
+
+    assert first_block.text == "Hello world"
+    assert first_block.confidence == 0.6
+    assert first_block.position is not None
+    assert first_block.position.x0 == 10.0
+    assert first_block.position.y0 == 10.0
+    assert first_block.position.x1 == 70.0
+    assert first_block.position.y1 == 20.0
+
+    second_block = content.pages[0].blocks[1]
+
+    assert second_block.text == "Next"
+    assert second_block.confidence is None
+    assert second_block.position is not None
+    assert second_block.position.x0 == 10.0
+    assert second_block.position.y0 == 30.0
+    assert second_block.position.x1 == 35.0
+    assert second_block.position.y1 == 40.0
 
 
 def test_normalization_keeps_full_page_fallback_without_elements() -> None:

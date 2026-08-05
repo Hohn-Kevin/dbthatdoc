@@ -151,6 +151,15 @@ def test_normalization_groups_words_into_line_blocks_and_ignores_noise() -> None
                         y1=11.0,
                     ),
                     ExtractedElement(
+                        text="artifact",
+                        element_type="word",
+                        confidence=0.44,
+                        x0=10.0,
+                        y0=24.0,
+                        x1=190.0,
+                        y1=26.0,
+                    ),
+                    ExtractedElement(
                         text="world",
                         element_type="word",
                         confidence=0.7,
@@ -167,6 +176,15 @@ def test_normalization_groups_words_into_line_blocks_and_ignores_noise() -> None
                         y0=10.0,
                         x1=35.0,
                         y1=20.0,
+                    ),
+                    ExtractedElement(
+                        text="-",
+                        element_type="word",
+                        confidence=0.84,
+                        x0=36.0,
+                        y0=13.0,
+                        x1=39.0,
+                        y1=17.0,
                     ),
                     ExtractedElement(
                         text="Next",
@@ -195,8 +213,8 @@ def test_normalization_groups_words_into_line_blocks_and_ignores_noise() -> None
 
     first_block = content.pages[0].blocks[0]
 
-    assert first_block.text == "Hello world"
-    assert first_block.confidence == 0.6
+    assert first_block.text == "Hello - world"
+    assert first_block.confidence == pytest.approx(0.68)
     assert first_block.position is not None
     assert first_block.position.x0 == 10.0
     assert first_block.position.y0 == 10.0

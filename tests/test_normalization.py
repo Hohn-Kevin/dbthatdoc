@@ -27,12 +27,14 @@ def test_pdf_result_can_be_normalized() -> None:
     assert len(content.extraction_methods) == 1
 
     first_page = content.pages[0]
-    first_element = extraction.pages[0].elements[0]
     first_block = first_page.blocks[0]
 
     assert len(first_page.blocks) < len(extraction.pages[0].elements)
     assert len(first_page.blocks) > 1
-    assert first_element.text in first_block.text
+    assert (
+        "MUSTER" in first_block.text
+        or "Rechnung" in first_block.text
+    )
     assert first_block.source == "pdfplumber"
     assert first_block.confidence is None
     assert first_block.position is not None
@@ -40,10 +42,6 @@ def test_pdf_result_can_be_normalized() -> None:
     assert first_block.position.y0 is not None
     assert first_block.position.x1 is not None
     assert first_block.position.y1 is not None
-    assert first_block.position.x0 <= first_element.x0
-    assert first_block.position.y0 <= first_element.y0
-    assert first_block.position.x1 >= first_element.x1
-    assert first_block.position.y1 >= first_element.y1
 
 
 def test_ocr_result_can_be_normalized() -> None:
@@ -58,22 +56,17 @@ def test_ocr_result_can_be_normalized() -> None:
     assert content.full_text != ""
 
     first_page = content.pages[0]
-    first_element = extraction.pages[0].elements[0]
     first_block = first_page.blocks[0]
 
     assert len(first_page.blocks) < len(extraction.pages[0].elements)
     assert len(first_page.blocks) > 1
-    assert first_element.text in first_block.text
+    assert not first_block.text.startswith("}")
     assert first_block.source == "tesseract+pypdfium2"
     assert first_block.position is not None
     assert first_block.position.x0 is not None
     assert first_block.position.y0 is not None
     assert first_block.position.x1 is not None
     assert first_block.position.y1 is not None
-    assert first_block.position.x0 <= first_element.x0
-    assert first_block.position.y0 <= first_element.y0
-    assert first_block.position.x1 >= first_element.x1
-    assert first_block.position.y1 >= first_element.y1
 
     block_with_confidence = next(
         block for block in first_page.blocks
@@ -82,9 +75,14 @@ def test_ocr_result_can_be_normalized() -> None:
 
     assert block_with_confidence.confidence is not None
     assert 0.0 <= block_with_confidence.confidence <= 1.0
+    assert all(
+        0.0 <= block.confidence <= 1.0
+        for block in first_page.blocks
+        if block.confidence is not None
+    )
 
 
-def test_normalization_groups_words_into_line_blocks() -> None:
+def test_normalization_groups_words_into_line_blocks_and_ignores_noise() -> None:
     extraction = ExtractionResult(
         source=SourceInfo(
             filename="lines.pdf",
@@ -98,7 +96,18 @@ def test_normalization_groups_words_into_line_blocks() -> None:
             PageContent(
                 page_number=1,
                 text="Hello world\nNext",
+                width=200.0,
+                height=100.0,
                 elements=[
+                    ExtractedElement(
+                        text="}",
+                        element_type="word",
+                        confidence=0.02,
+                        x0=0.0,
+                        y0=0.0,
+                        x1=2.0,
+                        y1=11.0,
+                    ),
                     ExtractedElement(
                         text="world",
                         element_type="word",

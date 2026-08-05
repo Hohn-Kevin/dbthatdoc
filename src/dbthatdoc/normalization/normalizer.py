@@ -49,10 +49,28 @@ def _height(element: ExtractedElement) -> float:
     return element.y1 - element.y0
 
 
+def _median(values: list[float]) -> float | None:
+    if not values:
+        return None
+
+    sorted_values = sorted(values)
+    middle_index = len(sorted_values) // 2
+
+    if len(sorted_values) % 2 == 1:
+        return sorted_values[middle_index]
+
+    return (
+        sorted_values[middle_index - 1]
+        + sorted_values[middle_index]
+    ) / 2
+
+
 def _is_margin_noise(
     element: ExtractedElement,
     page_width: float | None,
     page_height: float | None,
+    typical_word_width: float | None,
+    typical_word_height: float | None,
 ) -> bool:
     text = element.text.strip()
 
@@ -86,17 +104,32 @@ def _is_margin_noise(
         character.isalnum() for character in text
     )
     is_tiny = _width(element) <= 3.0 or _height(element) <= 3.0
-    is_edge_speck = _width(element) <= 8.0 and _height(element) <= 8.0
+    is_edge_speck = (
+        typical_word_width is not None
+        and typical_word_height is not None
+        and _width(element) <= max(3.0, typical_word_width * 0.25)
+        and _height(element) <= max(3.0, typical_word_height * 0.50)
+    )
+    edge_padding_x = (
+        max(3.0, page_width * 0.005)
+        if page_width is not None
+        else 3.0
+    )
+    edge_padding_y = (
+        max(3.0, page_height * 0.005)
+        if page_height is not None
+        else 3.0
+    )
     is_near_page_edge = (
-        element.x0 <= 3.0
-        or element.y0 <= 3.0
+        element.x0 <= edge_padding_x
+        or element.y0 <= edge_padding_y
         or (
             page_width is not None
-            and element.x1 >= page_width - 3.0
+            and element.x1 >= page_width - edge_padding_x
         )
         or (
             page_height is not None
-            and element.y1 >= page_height - 3.0
+            and element.y1 >= page_height - edge_padding_y
         )
     )
 
@@ -113,13 +146,29 @@ def _group_elements_by_line(
     page_width: float | None = None,
     page_height: float | None = None,
 ) -> list[list[ExtractedElement]]:
-    positioned_elements = [
+    plausible_elements = [
         element
         for element in elements
+        if element.text.strip() and _has_plausible_position(element)
+    ]
+    typical_word_width = _median([
+        _width(element) for element in plausible_elements
+    ])
+    typical_word_height = _median([
+        _height(element) for element in plausible_elements
+    ])
+
+    positioned_elements = [
+        element
+        for element in plausible_elements
         if (
-            element.text.strip()
-            and _has_plausible_position(element)
-            and not _is_margin_noise(element, page_width, page_height)
+            not _is_margin_noise(
+                element,
+                page_width,
+                page_height,
+                typical_word_width,
+                typical_word_height,
+            )
         )
     ]
 

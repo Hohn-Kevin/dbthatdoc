@@ -113,6 +113,15 @@ def test_normalization_groups_words_into_line_blocks_and_ignores_noise() -> None
                         y1=11.0,
                     ),
                     ExtractedElement(
+                        text="Er",
+                        element_type="word",
+                        confidence=0.44,
+                        x0=195.0,
+                        y0=0.0,
+                        x1=200.0,
+                        y1=4.0,
+                    ),
+                    ExtractedElement(
                         text="world",
                         element_type="word",
                         confidence=0.7,

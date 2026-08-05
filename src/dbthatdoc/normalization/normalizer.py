@@ -19,10 +19,28 @@ def _has_position(element: ExtractedElement) -> bool:
     )
 
 
+def _has_plausible_position(element: ExtractedElement) -> bool:
+    if not _has_position(element):
+        return False
+
+    assert element.x0 is not None
+    assert element.y0 is not None
+    assert element.x1 is not None
+    assert element.y1 is not None
+
+    return element.x1 > element.x0 and element.y1 > element.y0
+
+
 def _vertical_center(element: ExtractedElement) -> float:
     assert element.y0 is not None
     assert element.y1 is not None
     return (element.y0 + element.y1) / 2
+
+
+def _width(element: ExtractedElement) -> float:
+    assert element.x0 is not None
+    assert element.x1 is not None
+    return element.x1 - element.x0
 
 
 def _height(element: ExtractedElement) -> float:
@@ -31,12 +49,142 @@ def _height(element: ExtractedElement) -> float:
     return element.y1 - element.y0
 
 
+def _median(values: list[float]) -> float | None:
+    if not values:
+        return None
+
+    sorted_values = sorted(values)
+    middle_index = len(sorted_values) // 2
+
+    if len(sorted_values) % 2 == 1:
+        return sorted_values[middle_index]
+
+    return (
+        sorted_values[middle_index - 1]
+        + sorted_values[middle_index]
+    ) / 2
+
+
+def _is_margin_noise(
+    element: ExtractedElement,
+    page_width: float | None,
+    page_height: float | None,
+    typical_word_width: float | None,
+    typical_word_height: float | None,
+) -> bool:
+    text = element.text.strip()
+
+    if not _has_plausible_position(element):
+        return True
+
+    assert element.x0 is not None
+    assert element.y0 is not None
+    assert element.x1 is not None
+    assert element.y1 is not None
+
+    if page_width is not None and (
+        element.x1 <= 0 or element.x0 >= page_width
+    ):
+        return True
+
+    if page_height is not None and (
+        element.y1 <= 0 or element.y0 >= page_height
+    ):
+        return True
+
+    is_low_confidence = (
+        element.confidence is not None
+        and element.confidence <= 0.10
+    )
+    is_low_edge_confidence = (
+        element.confidence is not None
+        and element.confidence <= 0.50
+    )
+    is_short_symbol = len(text) <= 2 and not any(
+        character.isalnum() for character in text
+    )
+    is_edge_speck = (
+        typical_word_width is not None
+        and typical_word_height is not None
+        and _width(element) <= max(3.0, typical_word_width * 0.25)
+        and _height(element) <= max(3.0, typical_word_height * 0.50)
+    )
+    non_whitespace_character_count = sum(
+        not character.isspace() for character in text
+    )
+    is_sparse_wide_mark = (
+        non_whitespace_character_count > 0
+        and typical_word_height is not None
+        and page_width is not None
+        and _width(element) >= page_width * 0.50
+        and _height(element) <= typical_word_height * 1.50
+        and (
+            _width(element)
+            / (_height(element) * non_whitespace_character_count)
+            >= 8.0
+        )
+    )
+    edge_padding_x = (
+        max(3.0, page_width * 0.005)
+        if page_width is not None
+        else 3.0
+    )
+    edge_padding_y = (
+        max(3.0, page_height * 0.005)
+        if page_height is not None
+        else 3.0
+    )
+    is_near_page_edge = (
+        element.x0 <= edge_padding_x
+        or element.y0 <= edge_padding_y
+        or (
+            page_width is not None
+            and element.x1 >= page_width - edge_padding_x
+        )
+        or (
+            page_height is not None
+            and element.y1 >= page_height - edge_padding_y
+        )
+    )
+
+    if is_low_edge_confidence and is_edge_speck and is_near_page_edge:
+        return True
+
+    if is_low_edge_confidence and is_sparse_wide_mark:
+        return True
+
+    return is_short_symbol and is_low_confidence and is_near_page_edge
+
+
 def _group_elements_by_line(
     elements: list[ExtractedElement],
+    page_width: float | None = None,
+    page_height: float | None = None,
 ) -> list[list[ExtractedElement]]:
+    plausible_elements = [
+        element
+        for element in elements
+        if element.text.strip() and _has_plausible_position(element)
+    ]
+    typical_word_width = _median([
+        _width(element) for element in plausible_elements
+    ])
+    typical_word_height = _median([
+        _height(element) for element in plausible_elements
+    ])
+
     positioned_elements = [
-        element for element in elements
-        if element.text.strip() and _has_position(element)
+        element
+        for element in plausible_elements
+        if (
+            not _is_margin_noise(
+                element,
+                page_width,
+                page_height,
+                typical_word_width,
+                typical_word_height,
+            )
+        )
     ]
 
     sorted_elements = sorted(
@@ -126,7 +274,11 @@ def normalize_extraction(
                 page_number=page.page_number,
                 source=result.processing.extractor,
             )
-            for line in _group_elements_by_line(page.elements)
+            for line in _group_elements_by_line(
+                page.elements,
+                page.width,
+                page.height,
+            )
         ]
 
         if not blocks and page.text.strip():

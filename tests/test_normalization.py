@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from dbthatdoc.models import (
     ExtractedElement,
     ExtractionResult,
@@ -14,25 +16,36 @@ from dbthatdoc.pipeline import inspect_file
 SAMPLES_DIR = Path(__file__).parent.parent / "samples"
 
 
-def test_pdf_result_can_be_normalized() -> None:
+@pytest.mark.parametrize(
+    ("filename", "expected_terms"),
+    [
+        ("sample_invoice_1.pdf", ("MUSTER", "Rechnung")),
+        ("sample_invoice_2.pdf", ("Firmenname",)),
+        ("sample_invoice_3.pdf", ("Firmenname",)),
+        ("sample_invoice_4.pdf", ("Firmenname", "Dienstleistungen")),
+    ],
+)
+def test_pdf_result_can_be_normalized(
+    filename: str,
+    expected_terms: tuple[str, ...],
+) -> None:
     extraction = inspect_file(
-        SAMPLES_DIR / "sample_invoice_1.pdf"
+        SAMPLES_DIR / filename
     )
 
     content = normalize_extraction(extraction)
 
-    assert content.source_file == "sample_invoice_1.pdf"
+    assert content.source_file == filename
     assert len(content.pages) == 2
     assert content.full_text != ""
     assert len(content.extraction_methods) == 1
 
     first_page = content.pages[0]
-    first_element = extraction.pages[0].elements[0]
     first_block = first_page.blocks[0]
 
     assert len(first_page.blocks) < len(extraction.pages[0].elements)
     assert len(first_page.blocks) > 1
-    assert first_element.text in first_block.text
+    assert any(term in first_block.text for term in expected_terms)
     assert first_block.source == "pdfplumber"
     assert first_block.confidence is None
     assert first_block.position is not None
@@ -40,40 +53,44 @@ def test_pdf_result_can_be_normalized() -> None:
     assert first_block.position.y0 is not None
     assert first_block.position.x1 is not None
     assert first_block.position.y1 is not None
-    assert first_block.position.x0 <= first_element.x0
-    assert first_block.position.y0 <= first_element.y0
-    assert first_block.position.x1 >= first_element.x1
-    assert first_block.position.y1 >= first_element.y1
 
 
-def test_ocr_result_can_be_normalized() -> None:
+@pytest.mark.parametrize(
+    ("filename", "expected_terms"),
+    [
+        ("sample_invoice_1_scan.pdf", ("MUSTER", "Rechnung")),
+        ("sample_invoice_2_scan.pdf", ("Professionelle", "Beratung")),
+        ("sample_invoice_3_scan.pdf", ("Firmenname",)),
+        ("sample_invoice_4_scan.pdf", ("Sachen", "Dienstleistungen")),
+    ],
+)
+def test_ocr_result_can_be_normalized(
+    filename: str,
+    expected_terms: tuple[str, ...],
+) -> None:
     extraction = inspect_file(
-        SAMPLES_DIR / "sample_invoice_1_scan.pdf"
+        SAMPLES_DIR / filename
     )
 
     content = normalize_extraction(extraction)
 
-    assert content.source_file == "sample_invoice_1_scan.pdf"
+    assert content.source_file == filename
     assert len(content.pages) == 2
     assert content.full_text != ""
 
     first_page = content.pages[0]
-    first_element = extraction.pages[0].elements[0]
     first_block = first_page.blocks[0]
 
     assert len(first_page.blocks) < len(extraction.pages[0].elements)
     assert len(first_page.blocks) > 1
-    assert first_element.text in first_block.text
+    assert len(first_block.text.strip()) > 2
+    assert any(term in first_block.text for term in expected_terms)
     assert first_block.source == "tesseract+pypdfium2"
     assert first_block.position is not None
     assert first_block.position.x0 is not None
     assert first_block.position.y0 is not None
     assert first_block.position.x1 is not None
     assert first_block.position.y1 is not None
-    assert first_block.position.x0 <= first_element.x0
-    assert first_block.position.y0 <= first_element.y0
-    assert first_block.position.x1 >= first_element.x1
-    assert first_block.position.y1 >= first_element.y1
 
     block_with_confidence = next(
         block for block in first_page.blocks
@@ -82,9 +99,14 @@ def test_ocr_result_can_be_normalized() -> None:
 
     assert block_with_confidence.confidence is not None
     assert 0.0 <= block_with_confidence.confidence <= 1.0
+    assert all(
+        0.0 <= block.confidence <= 1.0
+        for block in first_page.blocks
+        if block.confidence is not None
+    )
 
 
-def test_normalization_groups_words_into_line_blocks() -> None:
+def test_normalization_groups_words_into_line_blocks_and_ignores_noise() -> None:
     extraction = ExtractionResult(
         source=SourceInfo(
             filename="lines.pdf",
@@ -98,7 +120,45 @@ def test_normalization_groups_words_into_line_blocks() -> None:
             PageContent(
                 page_number=1,
                 text="Hello world\nNext",
+                width=200.0,
+                height=100.0,
                 elements=[
+                    ExtractedElement(
+                        text="}",
+                        element_type="word",
+                        confidence=0.02,
+                        x0=0.0,
+                        y0=0.0,
+                        x1=2.0,
+                        y1=11.0,
+                    ),
+                    ExtractedElement(
+                        text="Er",
+                        element_type="word",
+                        confidence=0.44,
+                        x0=195.0,
+                        y0=0.0,
+                        x1=200.0,
+                        y1=4.0,
+                    ),
+                    ExtractedElement(
+                        text="ee",
+                        element_type="word",
+                        confidence=0.18,
+                        x0=0.0,
+                        y0=0.0,
+                        x1=200.0,
+                        y1=11.0,
+                    ),
+                    ExtractedElement(
+                        text="artifact",
+                        element_type="word",
+                        confidence=0.44,
+                        x0=10.0,
+                        y0=24.0,
+                        x1=190.0,
+                        y1=26.0,
+                    ),
                     ExtractedElement(
                         text="world",
                         element_type="word",
@@ -116,6 +176,15 @@ def test_normalization_groups_words_into_line_blocks() -> None:
                         y0=10.0,
                         x1=35.0,
                         y1=20.0,
+                    ),
+                    ExtractedElement(
+                        text="-",
+                        element_type="word",
+                        confidence=0.84,
+                        x0=36.0,
+                        y0=13.0,
+                        x1=39.0,
+                        y1=17.0,
                     ),
                     ExtractedElement(
                         text="Next",
@@ -144,8 +213,8 @@ def test_normalization_groups_words_into_line_blocks() -> None:
 
     first_block = content.pages[0].blocks[0]
 
-    assert first_block.text == "Hello world"
-    assert first_block.confidence == 0.6
+    assert first_block.text == "Hello - world"
+    assert first_block.confidence == pytest.approx(0.68)
     assert first_block.position is not None
     assert first_block.position.x0 == 10.0
     assert first_block.position.y0 == 10.0

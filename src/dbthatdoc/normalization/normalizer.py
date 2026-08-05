@@ -103,12 +103,21 @@ def _is_margin_noise(
     is_short_symbol = len(text) <= 2 and not any(
         character.isalnum() for character in text
     )
+    is_short_text = len(text) <= 2
     is_tiny = _width(element) <= 3.0 or _height(element) <= 3.0
     is_edge_speck = (
         typical_word_width is not None
         and typical_word_height is not None
         and _width(element) <= max(3.0, typical_word_width * 0.25)
         and _height(element) <= max(3.0, typical_word_height * 0.50)
+    )
+    is_edge_smear = (
+        is_short_text
+        and typical_word_width is not None
+        and typical_word_height is not None
+        and page_width is not None
+        and _width(element) >= max(page_width * 0.50, typical_word_width * 8)
+        and _height(element) <= typical_word_height * 1.50
     )
     edge_padding_x = (
         max(3.0, page_width * 0.005)
@@ -134,6 +143,9 @@ def _is_margin_noise(
     )
 
     if is_low_edge_confidence and is_edge_speck and is_near_page_edge:
+        return True
+
+    if is_low_edge_confidence and is_edge_smear and is_near_page_edge:
         return True
 
     return is_short_symbol and (

@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from dbthatdoc.models import (
     ExtractedElement,
     ExtractionResult,
@@ -14,14 +16,26 @@ from dbthatdoc.pipeline import inspect_file
 SAMPLES_DIR = Path(__file__).parent.parent / "samples"
 
 
-def test_pdf_result_can_be_normalized() -> None:
+@pytest.mark.parametrize(
+    ("filename", "expected_terms"),
+    [
+        ("sample_invoice_1.pdf", ("MUSTER", "Rechnung")),
+        ("sample_invoice_2.pdf", ("Firmenname",)),
+        ("sample_invoice_3.pdf", ("Firmenname",)),
+        ("sample_invoice_4.pdf", ("Firmenname", "Dienstleistungen")),
+    ],
+)
+def test_pdf_result_can_be_normalized(
+    filename: str,
+    expected_terms: tuple[str, ...],
+) -> None:
     extraction = inspect_file(
-        SAMPLES_DIR / "sample_invoice_1.pdf"
+        SAMPLES_DIR / filename
     )
 
     content = normalize_extraction(extraction)
 
-    assert content.source_file == "sample_invoice_1.pdf"
+    assert content.source_file == filename
     assert len(content.pages) == 2
     assert content.full_text != ""
     assert len(content.extraction_methods) == 1
@@ -31,10 +45,7 @@ def test_pdf_result_can_be_normalized() -> None:
 
     assert len(first_page.blocks) < len(extraction.pages[0].elements)
     assert len(first_page.blocks) > 1
-    assert (
-        "MUSTER" in first_block.text
-        or "Rechnung" in first_block.text
-    )
+    assert any(term in first_block.text for term in expected_terms)
     assert first_block.source == "pdfplumber"
     assert first_block.confidence is None
     assert first_block.position is not None
@@ -44,14 +55,26 @@ def test_pdf_result_can_be_normalized() -> None:
     assert first_block.position.y1 is not None
 
 
-def test_ocr_result_can_be_normalized() -> None:
+@pytest.mark.parametrize(
+    ("filename", "expected_terms"),
+    [
+        ("sample_invoice_1_scan.pdf", ("MUSTER", "Rechnung")),
+        ("sample_invoice_2_scan.pdf", ("Professionelle", "Beratung")),
+        ("sample_invoice_3_scan.pdf", ("Firmenname",)),
+        ("sample_invoice_4_scan.pdf", ("Sachen", "Dienstleistungen")),
+    ],
+)
+def test_ocr_result_can_be_normalized(
+    filename: str,
+    expected_terms: tuple[str, ...],
+) -> None:
     extraction = inspect_file(
-        SAMPLES_DIR / "sample_invoice_1_scan.pdf"
+        SAMPLES_DIR / filename
     )
 
     content = normalize_extraction(extraction)
 
-    assert content.source_file == "sample_invoice_1_scan.pdf"
+    assert content.source_file == filename
     assert len(content.pages) == 2
     assert content.full_text != ""
 
@@ -60,11 +83,8 @@ def test_ocr_result_can_be_normalized() -> None:
 
     assert len(first_page.blocks) < len(extraction.pages[0].elements)
     assert len(first_page.blocks) > 1
-    assert not first_block.text.startswith("}")
-    assert (
-        "MUSTER" in first_block.text
-        or "Rechnung" in first_block.text
-    )
+    assert len(first_block.text.strip()) > 2
+    assert any(term in first_block.text for term in expected_terms)
     assert first_block.source == "tesseract+pypdfium2"
     assert first_block.position is not None
     assert first_block.position.x0 is not None
@@ -120,6 +140,15 @@ def test_normalization_groups_words_into_line_blocks_and_ignores_noise() -> None
                         y0=0.0,
                         x1=200.0,
                         y1=4.0,
+                    ),
+                    ExtractedElement(
+                        text="ee",
+                        element_type="word",
+                        confidence=0.18,
+                        x0=0.0,
+                        y0=0.0,
+                        x1=200.0,
+                        y1=11.0,
                     ),
                     ExtractedElement(
                         text="world",

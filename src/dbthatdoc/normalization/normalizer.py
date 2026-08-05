@@ -78,10 +78,15 @@ def _is_margin_noise(
         element.confidence is not None
         and element.confidence <= 0.10
     )
+    is_low_edge_confidence = (
+        element.confidence is not None
+        and element.confidence <= 0.50
+    )
     is_short_symbol = len(text) <= 2 and not any(
         character.isalnum() for character in text
     )
     is_tiny = _width(element) <= 3.0 or _height(element) <= 3.0
+    is_edge_speck = _width(element) <= 8.0 and _height(element) <= 8.0
     is_near_page_edge = (
         element.x0 <= 3.0
         or element.y0 <= 3.0
@@ -94,6 +99,9 @@ def _is_margin_noise(
             and element.y1 >= page_height - 3.0
         )
     )
+
+    if is_low_edge_confidence and is_edge_speck and is_near_page_edge:
+        return True
 
     return is_short_symbol and (
         is_tiny or (is_low_confidence and is_near_page_edge)

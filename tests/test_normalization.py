@@ -61,6 +61,10 @@ def test_ocr_result_can_be_normalized() -> None:
     assert len(first_page.blocks) < len(extraction.pages[0].elements)
     assert len(first_page.blocks) > 1
     assert not first_block.text.startswith("}")
+    assert (
+        "MUSTER" in first_block.text
+        or "Rechnung" in first_block.text
+    )
     assert first_block.source == "tesseract+pypdfium2"
     assert first_block.position is not None
     assert first_block.position.x0 is not None

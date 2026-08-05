@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from math import isfinite
+
 from dbthatdoc.models import (
     DocumentContent,
     DocumentPage,
@@ -19,6 +21,22 @@ def _has_position(element: ExtractedElement) -> bool:
     )
 
 
+def _has_no_position(element: ExtractedElement) -> bool:
+    return (
+        element.x0 is None
+        and element.y0 is None
+        and element.x1 is None
+        and element.y1 is None
+    )
+
+
+def _usable_page_dimension(value: float | None) -> float | None:
+    if value is None or not isfinite(value) or value <= 0:
+        return None
+
+    return value
+
+
 def _has_plausible_position(element: ExtractedElement) -> bool:
     if not _has_position(element):
         return False
@@ -28,7 +46,13 @@ def _has_plausible_position(element: ExtractedElement) -> bool:
     assert element.x1 is not None
     assert element.y1 is not None
 
-    return element.x1 > element.x0 and element.y1 > element.y0
+    coordinates = (element.x0, element.y0, element.x1, element.y1)
+
+    return (
+        all(isfinite(coordinate) for coordinate in coordinates)
+        and element.x1 > element.x0
+        and element.y1 > element.y0
+    )
 
 
 def _vertical_center(element: ExtractedElement) -> float:
@@ -65,7 +89,7 @@ def _median(values: list[float]) -> float | None:
     ) / 2
 
 
-def _is_margin_noise(
+def _is_geometric_noise(
     element: ExtractedElement,
     page_width: float | None,
     page_height: float | None,
@@ -161,10 +185,16 @@ def _group_elements_by_line(
     page_width: float | None = None,
     page_height: float | None = None,
 ) -> list[list[ExtractedElement]]:
+    usable_page_width = _usable_page_dimension(page_width)
+    usable_page_height = _usable_page_dimension(page_height)
     plausible_elements = [
         element
         for element in elements
-        if element.text.strip() and _has_plausible_position(element)
+        if (
+            element.element_type == "word"
+            and element.text.strip()
+            and _has_plausible_position(element)
+        )
     ]
     typical_word_width = _median([
         _width(element) for element in plausible_elements
@@ -177,10 +207,10 @@ def _group_elements_by_line(
         element
         for element in plausible_elements
         if (
-            not _is_margin_noise(
+            not _is_geometric_noise(
                 element,
-                page_width,
-                page_height,
+                usable_page_width,
+                usable_page_height,
                 typical_word_width,
                 typical_word_height,
             )
@@ -198,35 +228,140 @@ def _group_elements_by_line(
     lines: list[list[ExtractedElement]] = []
 
     for element in sorted_elements:
-        if not lines:
+        matching_lines: list[
+            tuple[float, list[ExtractedElement]]
+        ] = []
+
+        for line in lines:
+            line_y0 = _median([
+                line_element.y0
+                for line_element in line
+                if line_element.y0 is not None
+            ])
+            line_y1 = _median([
+                line_element.y1
+                for line_element in line
+                if line_element.y1 is not None
+            ])
+            line_center = _median([
+                _vertical_center(line_element)
+                for line_element in line
+            ])
+            line_height = _median([
+                _height(line_element)
+                for line_element in line
+            ])
+
+            assert line_y0 is not None
+            assert line_y1 is not None
+            assert line_center is not None
+            assert line_height is not None
+            assert element.y0 is not None
+            assert element.y1 is not None
+
+            overlap = max(
+                0.0,
+                min(line_y1, element.y1)
+                - max(line_y0, element.y0),
+            )
+            overlap_ratio = overlap / min(
+                line_height,
+                _height(element),
+            )
+            center_distance = abs(
+                _vertical_center(element) - line_center
+            )
+            baseline_distance = abs(element.y1 - line_y1)
+            reference_height = typical_word_height or min(
+                line_height,
+                _height(element),
+            )
+            line_is_oversized = (
+                line_height > reference_height * 3.0
+            )
+            element_is_oversized = (
+                _height(element) > reference_height * 3.0
+            )
+
+            # Extreme height outliers must not bridge adjacent text rows.
+            if line_is_oversized != element_is_oversized:
+                continue
+
+            if line_is_oversized:
+                belongs_to_line = (
+                    overlap_ratio >= 0.50
+                    and center_distance
+                    <= max(line_height, _height(element)) * 0.50
+                )
+            else:
+                belongs_to_line = (
+                    (
+                        overlap_ratio >= 0.50
+                        and center_distance
+                        <= max(2.0, reference_height * 0.85)
+                    )
+                    or baseline_distance
+                    <= max(2.0, reference_height * 0.35)
+                )
+
+            if belongs_to_line:
+                matching_lines.append((center_distance, line))
+
+        if not matching_lines:
             lines.append([element])
             continue
 
-        current_line = lines[-1]
-        line_center = sum(
-            _vertical_center(line_element)
-            for line_element in current_line
-        ) / len(current_line)
-        line_height = max(
-            _height(line_element)
-            for line_element in current_line
+        _, best_line = min(
+            matching_lines,
+            key=lambda match: match[0],
         )
-        threshold = max(2.0, max(line_height, _height(element)) * 0.75)
+        best_line.append(element)
 
-        if abs(_vertical_center(element) - line_center) <= threshold:
-            current_line.append(element)
-        else:
-            lines.append([element])
+    sorted_lines = sorted(
+        [
+            sorted(
+                line,
+                key=lambda element: (
+                    element.x0 if element.x0 is not None else 0
+                ),
+            )
+            for line in lines
+        ],
+        key=lambda line: _median([
+            _vertical_center(element) for element in line
+        ]) or 0.0,
+    )
+    horizontal_gap_threshold = max(
+        usable_page_width * 0.03
+        if usable_page_width is not None
+        else 0.0,
+        typical_word_height * 2.0
+        if typical_word_height is not None
+        else 0.0,
+        3.0,
+    )
+    text_runs: list[list[ExtractedElement]] = []
 
-    return [
-        sorted(
-            line,
-            key=lambda element: (
-                element.x0 if element.x0 is not None else 0
-            ),
-        )
-        for line in lines
-    ]
+    for line in sorted_lines:
+        current_run = [line[0]]
+
+        for element in line[1:]:
+            previous_element = current_run[-1]
+            assert previous_element.x1 is not None
+            assert element.x0 is not None
+
+            if (
+                element.x0 - previous_element.x1
+                > horizontal_gap_threshold
+            ):
+                text_runs.append(current_run)
+                current_run = [element]
+            else:
+                current_run.append(element)
+
+        text_runs.append(current_run)
+
+    return text_runs
 
 
 def _line_to_text_block(
@@ -262,6 +397,45 @@ def _line_to_text_block(
     )
 
 
+def _unpositioned_elements_to_text_block(
+    elements: list[ExtractedElement],
+    page_number: int,
+    source: str,
+) -> TextBlock | None:
+    unpositioned_words = [
+        element
+        for element in elements
+        if (
+            element.element_type == "word"
+            and element.text.strip()
+            and _has_no_position(element)
+        )
+    ]
+
+    if not unpositioned_words:
+        return None
+
+    confidences = [
+        element.confidence
+        for element in unpositioned_words
+        if element.confidence is not None
+    ]
+
+    return TextBlock(
+        text=" ".join(
+            element.text for element in unpositioned_words
+        ),
+        page_number=page_number,
+        source=source,
+        confidence=(
+            sum(confidences) / len(confidences)
+            if confidences
+            else None
+        ),
+        position=None,
+    )
+
+
 def normalize_extraction(
     result: ExtractionResult,
 ) -> DocumentContent:
@@ -280,6 +454,14 @@ def normalize_extraction(
                 page.height,
             )
         ]
+        unpositioned_block = _unpositioned_elements_to_text_block(
+            page.elements,
+            page.page_number,
+            result.processing.extractor,
+        )
+
+        if unpositioned_block is not None:
+            blocks.append(unpositioned_block)
 
         if not blocks and page.text.strip():
             blocks = [
@@ -301,10 +483,15 @@ def normalize_extraction(
             )
         )
 
+    normalized_full_text = "\n\n".join(
+        "\n".join(block.text for block in page.blocks)
+        for page in pages
+    ).strip()
+
     return DocumentContent(
         source_file=result.source.filename,
         pages=pages,
-        full_text=result.text,
+        full_text=normalized_full_text,
         extraction_methods=[
             result.processing.extractor
         ],

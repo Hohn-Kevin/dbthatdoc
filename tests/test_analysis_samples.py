@@ -24,6 +24,7 @@ def _signature(entity: AnalysisEntity) -> tuple[object, ...]:
         entity.kind,
         entity.normalized_value,
         entity.validation_status,
+        entity.party_type,
         tuple(entity.roles),
         tuple(
             (check.rule, check.dimension, check.passed)

@@ -111,11 +111,6 @@ such as `Inh.` may associate a name-like value with the `owner` role, but the
 entity remains `plausible` because document context cannot prove a real-world
 identity by itself.
 
-Digital PDF form values are extracted from AcroForm text widgets, including
-their field labels and page positions. This keeps analysis input aligned with
-the values visible to OCR in flattened scan equivalents without requiring OCR
-for every digital PDF.
-
 Repeated normalized entities are represented once with multiple evidence
 locations. Raw key-value candidates reference entities found in their source
 blocks, allowing later role and identity resolution without discarding the
@@ -123,6 +118,8 @@ original document text.
 Evidence and candidates carry exact character offsets. A candidate references
 an entity only when its value span overlaps exactly one entity span; ambiguous
 multi-entity values remain unlinked rather than claiming a false association.
+Offsets are always relative to the `text` of their individual evidence block;
+they are neither page-global nor document-global positions.
 
 Validation checks declare whether they concern syntax, structure, checksum,
 semantics, or external reference data. Recognition is recorded separately:
@@ -131,11 +128,21 @@ an invalid low-confidence OCR observation is marked as suspected OCR damage.
 Money notation alone is therefore plausible, not valid, because it does not
 establish the amount's accounting meaning.
 
+Party observations distinguish `person`, `organization`, and `unresolved`
+forms. Organization structure permits common legal forms, punctuation such as
+`&`, and digits. The form is still a structural classification rather than
+proof of legal identity.
+
+Layout distances and the OCR-corruption confidence boundary are configurable
+technical heuristics. They are defaults for the current rule-based analyzer,
+not calibrated probabilities or universally valid document measurements.
+
 Entity IDs are deterministic fingerprints of entity type and normalized value.
 Separate analysis runs can therefore reference the same normalized observation
 without exposing its clear value in the ID. For parties, this links equal name
 observations only; it does not assert that two real people with the same name
-are identical.
+are identical. The fingerprints are not anonymization and must not be treated
+as privacy-preserving identifiers for predictable value domains.
 
 The initial German rules follow primary public references:
 
@@ -158,11 +165,6 @@ every entity kind and
 validation rule to occur in at least two document families. This development
 set is supplemented by synthetic boundary and counterexample tests; it is not
 an independent holdout corpus.
-
-Tesseract page segmentation mode 3 remains the default, but is configurable
-through the extraction API and the CLI `--ocr-psm` option. This makes layout
-assumptions explicit and allows future document-family profiles without
-silently changing current extraction behavior.
 
 - [Postal reference data (Deutsche Post)](https://www.deutschepost.de/de/d/deutsche-post-direkt/datafactory.html)
 - [Licensed postal-code areas (BKG)](https://gdz.bkg.bund.de/index.php/default/wfs-postleitzahlgebiete-wfs-plz.html)

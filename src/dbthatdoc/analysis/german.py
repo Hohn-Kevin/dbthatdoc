@@ -93,6 +93,23 @@ _PARTY_ROLE_PATTERNS = {
     "buyer": re.compile(r"K\u00e4ufer(?:in)?|Kaeufer(?:in)?", re.IGNORECASE),
     "seller": re.compile(r"Verk\u00e4ufer(?:in)?|Verkaeufer(?:in)?", re.IGNORECASE),
 }
+_PARTY_VALUE_PATTERN = re.compile(
+    r"[\w\u00c0-\u024f&.+()'\u2019 -]+",
+    re.UNICODE,
+)
+_PERSON_TOKEN_PATTERN = re.compile(
+    r"[A-Za-z\u00c0-\u024f]+(?:[-'\u2019][A-Za-z\u00c0-\u024f]+)*"
+)
+_LEGAL_FORM_PATTERN = re.compile(
+    r"(?:\b(?:AG|KG|OHG|GbR|GmbH|UG|SE|eG|KGaA|PartG|mbB)\b|"
+    r"\be\.?\s*V\.?(?:\s|$))",
+    re.IGNORECASE,
+)
+_ORGANIZATION_DESIGNATOR_PATTERN = re.compile(
+    r"\b(?:Amt|Beh\u00f6rde|Gemeinde|Hochschule|Kanzlei|Ministerium|"
+    r"Stadt|Universit\u00e4t|Versicherung)\b",
+    re.IGNORECASE,
+)
 _POSTAL_LABEL_PATTERN = re.compile(r"(?:PLZ|Postleitzahl)", re.IGNORECASE)
 _LABELED_POSTAL_CODE_PATTERN = re.compile(
     r"\b(?:PLZ|Postleitzahl)(?:\s+[\w.\u00c4-\u00df-]+){0,4}"
@@ -122,6 +139,7 @@ class _EntityMatch:
     validation_status: str
     validation: tuple[ValidationCheck, ...]
     roles: tuple[str, ...] = ()
+    party_type: str | None = None
 
 
 class GermanEntityAnalyzer:
@@ -157,6 +175,11 @@ class GermanEntityAnalyzer:
                         existing.roles.append(role)
                 if recognition_status == "recognized_invalid":
                     existing.recognition_status = recognition_status
+                if (
+                    existing.party_type == "unresolved"
+                    and match.party_type in {"person", "organization"}
+                ):
+                    existing.party_type = match.party_type
                 return
 
             entity = AnalysisEntity(
@@ -166,6 +189,7 @@ class GermanEntityAnalyzer:
                 normalized_value=match.normalized_value,
                 validation_status=match.validation_status,
                 recognition_status=recognition_status,
+                party_type=match.party_type,
                 validation=list(match.validation),
                 roles=list(match.roles),
                 confidence=evidence.confidence,
@@ -265,14 +289,8 @@ def _party_match(candidate: AnalysisCandidate) -> _EntityMatch | None:
         return None
 
     value = " ".join(candidate.value.split())
-    words = value.split()
-    name_shape_valid = (
-        2 <= len(words) <= 8
-        and all(any(character.isalpha() for character in word) for word in words)
-        and not any(character.isdigit() for character in value)
-        and not any(separator in value for separator in ",;|/")
-    )
-    if not name_shape_valid:
+    party_type = _party_type(value)
+    if party_type is None:
         return None
 
     start = candidate.value_start_offset or 0
@@ -286,10 +304,21 @@ def _party_match(candidate: AnalysisCandidate) -> _EntityMatch | None:
         validation_status="plausible",
         validation=(
             ValidationCheck(
-                rule="de_party_name_shape",
+                rule="de_party_value_shape",
                 dimension="structure",
                 passed=True,
-                details="Name-like value associated with a recognized party role",
+                details=(
+                    "Bounded party value associated with a recognized role"
+                ),
+            ),
+            ValidationCheck(
+                rule="de_party_form",
+                dimension="semantic",
+                passed=(None if party_type == "unresolved" else True),
+                details=(
+                    "Classified from person or organization structure; "
+                    "unresolved values remain explicit"
+                ),
             ),
             ValidationCheck(
                 rule="official_identity",
@@ -299,7 +328,38 @@ def _party_match(candidate: AnalysisCandidate) -> _EntityMatch | None:
             ),
         ),
         roles=roles,
+        party_type=party_type,
     )
+
+
+def _party_type(value: str) -> str | None:
+    words = value.split()
+    value_shape_valid = (
+        1 <= len(words) <= 20
+        and len(value) <= 200
+        and any(character.isalpha() for character in value)
+        and "_" not in value
+        and not any(separator in value for separator in ",;|/")
+        and _PARTY_VALUE_PATTERN.fullmatch(value) is not None
+    )
+    if not value_shape_valid:
+        return None
+
+    organization_signal = (
+        _LEGAL_FORM_PATTERN.search(value) is not None
+        or _ORGANIZATION_DESIGNATOR_PATTERN.search(value) is not None
+        or any(character.isdigit() for character in value)
+        or "&" in value
+        or len(words) > 8
+    )
+    if organization_signal:
+        return "organization"
+
+    person_shape = (
+        2 <= len(words) <= 8
+        and all(_PERSON_TOKEN_PATTERN.fullmatch(word) for word in words)
+    )
+    return "person" if person_shape else "unresolved"
 
 
 def _iban_match(match: re.Match[str]) -> _EntityMatch:

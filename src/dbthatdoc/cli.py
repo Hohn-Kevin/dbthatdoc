@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-import sys
 from typing import Annotated
 
 import typer
@@ -19,9 +18,6 @@ app = typer.Typer(
 @app.callback()
 def main() -> None:
     """dbthatdoc verarbeitet Dateien und Medien lokal."""
-
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8")
 
 
 @app.command()
@@ -44,23 +40,11 @@ def inspect(
             help="JSON formatiert oder kompakt ausgeben.",
         ),
     ] = True,
-    ocr_psm: Annotated[
-        int,
-        typer.Option(
-            "--ocr-psm",
-            min=0,
-            max=13,
-            help="Tesseract-Seitensegmentierungsmodus fuer OCR.",
-        ),
-    ] = 3,
 ) -> None:
     """Untersucht eine Datei und gibt das Ergebnis als JSON aus."""
 
     try:
-        result = inspect_file(
-            file_path,
-            ocr_page_segmentation_mode=ocr_psm,
-        )
+        result = inspect_file(file_path)
     except (FileNotFoundError, ValueError) as error:
         typer.echo(f"Fehler: {error}", err=True)
         raise typer.Exit(code=1) from error
@@ -84,17 +68,10 @@ def inspect(
 @app.command()
 def normalize(
     file_path: Path,
-    ocr_psm: Annotated[
-        int,
-        typer.Option("--ocr-psm", min=0, max=13),
-    ] = 3,
 ) -> None:
     """Extrahiert eine Datei und gibt die normalisierte Struktur aus."""
 
-    result = inspect_file(
-        file_path,
-        ocr_page_segmentation_mode=ocr_psm,
-    )
+    result = inspect_file(file_path)
     content = normalize_extraction(result)
 
     typer.echo(
@@ -109,17 +86,10 @@ def normalize(
 @app.command()
 def analyze(
     file_path: Path,
-    ocr_psm: Annotated[
-        int,
-        typer.Option("--ocr-psm", min=0, max=13),
-    ] = 3,
 ) -> None:
     """Analysiert die normalisierte Struktur einer Datei."""
 
-    result = analyze_file(
-        file_path,
-        ocr_page_segmentation_mode=ocr_psm,
-    )
+    result = analyze_file(file_path)
 
     typer.echo(
         json.dumps(

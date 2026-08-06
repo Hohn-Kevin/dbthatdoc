@@ -251,8 +251,9 @@ def test_repeated_owner_references_share_a_party_entity() -> None:
     assert parties[0].value == "Erika Musterfrau"
     assert parties[0].normalized_value == "erika musterfrau"
     assert parties[0].validation_status == "plausible"
+    assert parties[0].party_type == "person"
     assert parties[0].roles == ["owner", "account_holder"]
-    assert parties[0].validation[1].passed is None
+    assert parties[0].validation[2].passed is None
     assert len(parties[0].evidence) == 3
     assert result.candidates[0].entity_ids == [parties[0].id]
     assert result.candidates[2].entity_ids == [parties[0].id]
@@ -277,6 +278,7 @@ def test_party_role_does_not_depend_on_an_owner_example() -> None:
     party = next(entity for entity in result.entities if entity.kind == "party")
 
     assert party.roles == ["account_holder"]
+    assert party.party_type == "person"
 
 
 def test_party_role_rejects_enumerated_recipient_categories() -> None:
@@ -285,6 +287,27 @@ def test_party_role_rejects_enumerated_recipient_categories() -> None:
     ))
 
     assert not any(entity.kind == "party" for entity in result.entities)
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "Muster GmbH & Co. KG",
+        "Autohaus Mueller GmbH",
+        "Kanzlei Schmidt PartG mbB",
+        "Gemeinde Grafschaft",
+        "Versicherung24 AG",
+        "Mueller Bau GmbH & Co KG",
+    ],
+)
+def test_party_roles_accept_organization_structures(name: str) -> None:
+    result = analyze_content(_content(f"Rechnungsaussteller: {name}"))
+
+    party = next(entity for entity in result.entities if entity.kind == "party")
+
+    assert party.value == name
+    assert party.party_type == "organization"
+    assert party.roles == ["issuer"]
 
 
 def test_money_supports_prefix_spaces_and_negative_notation() -> None:

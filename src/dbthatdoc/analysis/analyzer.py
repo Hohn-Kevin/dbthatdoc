@@ -28,7 +28,7 @@ from dbthatdoc.analysis.layout import (
 class KeyValueConfig:
     preferred_maximum_label_words: int = 7
     maximum_label_words: int = 16
-    minimum_label_score: int = 5
+    minimum_label_score: int = 4
     layout: LayoutConfig = field(default_factory=LayoutConfig)
 
 
@@ -98,7 +98,6 @@ class KeyValueAnalyzer:
                 value_index, value_block, relation = value_match
                 if not _is_candidate_label(
                     label[:-1],
-                    value_block.text,
                     self.config,
                 ):
                     continue
@@ -214,7 +213,7 @@ def _inline_candidate(
     value_end = len(block.text.rstrip())
 
     if (
-        not _is_candidate_label(label, value, config)
+        not _is_candidate_label(label, config)
         or not value
         or not any(character.isalnum() for character in value)
     ):
@@ -309,7 +308,6 @@ def _nearest_spatial_value(
 
 def _is_candidate_label(
     text: str,
-    value: str,
     config: KeyValueConfig,
 ) -> bool:
     label = text.strip()
@@ -322,15 +320,9 @@ def _is_candidate_label(
     score += 1 if word_count <= config.preferred_maximum_label_words else 0
     score += 1 if len(label) <= 80 else 0
     score += 1 if not any(mark in label for mark in ",;!?") else 0
-    score += 1 if any(character.isdigit() for character in value) else 0
 
     if word_count > config.maximum_label_words:
-        score -= 3
-    if (
-        word_count > config.preferred_maximum_label_words
-        and len(value.split()) > 3
-    ):
-        score -= 2
+        score -= 1
 
     return score >= config.minimum_label_score
 

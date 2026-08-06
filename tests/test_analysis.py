@@ -153,7 +153,7 @@ def test_analysis_supports_unpositioned_inline_evidence() -> None:
     assert result.candidates[0].evidence[0].position is None
 
 
-def test_analysis_ignores_sentence_length_labels() -> None:
+def test_analysis_treats_colon_structure_independently_of_value_type() -> None:
     content = _content([
         _block(
             "This is ordinary prose with many words before: more prose",
@@ -166,7 +166,8 @@ def test_analysis_ignores_sentence_length_labels() -> None:
 
     result = analyze_content(content)
 
-    assert result.candidates == []
+    assert len(result.candidates) == 1
+    assert result.candidates[0].value == "more prose"
 
 
 def test_analysis_accepts_long_structured_label_with_numeric_value() -> None:
@@ -182,6 +183,21 @@ def test_analysis_accepts_long_structured_label_with_numeric_value() -> None:
 
     assert len(result.candidates) == 1
     assert result.candidates[0].value == "01.02.2026"
+
+
+def test_analysis_accepts_long_structured_label_with_text_value() -> None:
+    content = _content([_block(
+        "Name der fuer die Bearbeitung verantwortlichen zustaendigen natuerlichen Person: Erika Musterfrau",
+        10.0,
+        10.0,
+        190.0,
+        20.0,
+    )])
+
+    result = analyze_content(content)
+
+    assert len(result.candidates) == 1
+    assert result.candidates[0].value == "Erika Musterfrau"
 
 
 def test_analysis_does_not_bridge_a_wide_column_gap() -> None:

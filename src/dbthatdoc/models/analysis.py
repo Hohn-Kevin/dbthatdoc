@@ -63,6 +63,11 @@ class AnalysisEntity(BaseModel):
         "recognized_invalid",
         "suspected_ocr_corruption",
     ] = "recognized"
+    party_type: Literal[
+        "person",
+        "organization",
+        "unresolved",
+    ] | None = None
     validation: list[ValidationCheck] = Field(min_length=1)
     roles: list[str] = Field(default_factory=list)
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)

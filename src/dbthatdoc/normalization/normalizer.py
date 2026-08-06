@@ -465,42 +465,6 @@ def normalize_extraction(
                 page.height,
             )
         ]
-        form_field_blocks = [
-            _line_to_text_block(
-                line=[element],
-                page_number=page.page_number,
-                source=result.processing.extractor,
-            )
-            for element in page.elements
-            if (
-                element.element_type == "form_field"
-                and element.text.strip()
-                and _has_plausible_position(element)
-            )
-        ]
-
-        for form_field_block in sorted(
-            form_field_blocks,
-            key=lambda block: (
-                block.position.y0 if block.position is not None else 0.0,
-                block.position.x0 if block.position is not None else 0.0,
-            ),
-        ):
-            assert form_field_block.position is not None
-            insert_at = next(
-                (
-                    index
-                    for index, block in enumerate(blocks)
-                    if (
-                        block.position is not None
-                        and block.position.y0 is not None
-                        and form_field_block.position.y0 is not None
-                        and block.position.y0 > form_field_block.position.y0
-                    )
-                ),
-                len(blocks),
-            )
-            blocks.insert(insert_at, form_field_block)
         unpositioned_block = _unpositioned_elements_to_text_block(
             page.elements,
             page.page_number,

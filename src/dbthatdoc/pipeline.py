@@ -8,11 +8,7 @@ from dbthatdoc.models import AnalysisResult, ExtractionResult
 from dbthatdoc.normalization import normalize_extraction
 
 
-def inspect_file(
-    file_path: str | Path,
-    *,
-    ocr_page_segmentation_mode: int = 3,
-) -> ExtractionResult:
+def inspect_file(file_path: str | Path) -> ExtractionResult:
     path = Path(file_path)
 
     if path.suffix.lower() != ".pdf":
@@ -25,20 +21,10 @@ def inspect_file(
     if text_result.processing.text_extracted:
         return text_result
 
-    return extract_pdf_ocr(
-        path,
-        page_segmentation_mode=ocr_page_segmentation_mode,
-    )
+    return extract_pdf_ocr(path)
 
 
-def analyze_file(
-    file_path: str | Path,
-    *,
-    ocr_page_segmentation_mode: int = 3,
-) -> AnalysisResult:
-    extraction = inspect_file(
-        file_path,
-        ocr_page_segmentation_mode=ocr_page_segmentation_mode,
-    )
+def analyze_file(file_path: str | Path) -> AnalysisResult:
+    extraction = inspect_file(file_path)
     content = normalize_extraction(extraction)
     return analyze_content(content)

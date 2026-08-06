@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from dbthatdoc.analysis import analyze_content
 from dbthatdoc.extractors import extract_pdf_ocr, extract_pdf_text
-from dbthatdoc.models import ExtractionResult
+from dbthatdoc.models import AnalysisResult, ExtractionResult
+from dbthatdoc.normalization import normalize_extraction
 
 
 def inspect_file(file_path: str | Path) -> ExtractionResult:
@@ -20,3 +22,9 @@ def inspect_file(file_path: str | Path) -> ExtractionResult:
         return text_result
 
     return extract_pdf_ocr(path)
+
+
+def analyze_file(file_path: str | Path) -> AnalysisResult:
+    extraction = inspect_file(file_path)
+    content = normalize_extraction(extraction)
+    return analyze_content(content)

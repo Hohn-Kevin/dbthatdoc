@@ -85,6 +85,17 @@ Possible engines include:
 - Tesseract OCR
 - PaddleOCR
 
+### Document Analysis
+
+Analysis consumes normalized `DocumentContent` and produces explicit candidates
+rather than modifying extraction or normalization results. Each candidate retains
+its source block indices, page, extraction source, confidence, and position so
+downstream classification and entity extraction can inspect its evidence.
+
+Analyzers are replaceable components. The initial analyzer identifies generic
+key-value structures from inline separators and nearby positioned blocks; it
+does not encode document types, field names, or sample-specific vocabulary.
+
 ### Semantic Layer
 
 Documents may be represented using embeddings after text has been extracted and normalized.

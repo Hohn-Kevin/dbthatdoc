@@ -6,7 +6,7 @@ from typing import Annotated
 
 import typer
 
-from dbthatdoc.pipeline import inspect_file
+from dbthatdoc.pipeline import analyze_file, inspect_file
 from dbthatdoc.normalization import normalize_extraction
 
 app = typer.Typer(
@@ -77,6 +77,23 @@ def normalize(
     typer.echo(
         json.dumps(
             content.model_dump(mode="json"),
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
+
+
+@app.command()
+def analyze(
+    file_path: Path,
+) -> None:
+    """Analysiert die normalisierte Struktur einer Datei."""
+
+    result = analyze_file(file_path)
+
+    typer.echo(
+        json.dumps(
+            result.model_dump(mode="json"),
             ensure_ascii=False,
             indent=2,
         )

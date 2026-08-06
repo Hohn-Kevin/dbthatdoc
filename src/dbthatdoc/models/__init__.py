@@ -1,3 +1,12 @@
+from dbthatdoc.models.analysis import (
+    AnalysisCandidate,
+    AnalysisEntity,
+    AnalysisEvidence,
+    AnalysisResult,
+    AnalyzerInfo,
+    ValidationCheck,
+)
+
 from dbthatdoc.models.content import (
     DocumentContent,
     DocumentPage,
@@ -14,6 +23,12 @@ from dbthatdoc.models.result import (
 )
 
 __all__ = [
+    "AnalysisCandidate",
+    "AnalysisEntity",
+    "AnalysisEvidence",
+    "AnalysisResult",
+    "AnalyzerInfo",
+    "ValidationCheck",
     "DocumentContent",
     "DocumentPage",
     "TextBlock",

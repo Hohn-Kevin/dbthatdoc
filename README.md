@@ -9,6 +9,9 @@ It extracts, normalizes, and structures information from documents and media fil
 - Digital PDF text extraction
 - Scanned PDF OCR processing
 - Unified extraction results
+- Normalized page and text-block structure
+- Evidence-backed key-value candidates
+- Normalized German entities with explicit validation and plausibility checks
 - Local processing pipeline
 
 ## Roadmap

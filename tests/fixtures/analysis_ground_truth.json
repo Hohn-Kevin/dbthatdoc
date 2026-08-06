@@ -1,0 +1,74 @@
+{
+  "forms/1/sample_form_1.pdf": [
+    ["date", "2018-05-22", "valid", []],
+    ["postal_code", "79111", "plausible", []],
+    ["postal_code", "79427", "plausible", []]
+  ],
+  "forms/2/sample_form_2.pdf": [
+    ["date", "2018-05-21", "valid", []]
+  ],
+  "forms/3/sample_form_3.pdf": [
+    ["date", "2018-05-21", "valid", []]
+  ],
+  "forms/4/sample_form_4.pdf": [
+    ["date", "2018-05-21", "valid", []]
+  ],
+  "forms/5/sample_form_5.pdf": [
+    ["date", "2018-05-21", "valid", []]
+  ],
+  "forms/6/sample_form_6.pdf": [
+    ["date", "2018-05-21", "valid", []]
+  ],
+  "forms/7/sample_form_7.pdf": [
+    ["postal_code", "79111", "plausible", []]
+  ],
+  "invoices/1/sample_invoice_1.pdf": [
+    ["postal_code", "59487", "plausible", []],
+    ["postal_code", "59199", "plausible", []],
+    ["money", "107.00 EUR", "plausible", []]
+  ],
+  "invoices/2/sample_invoice_2.pdf": [
+    ["postal_code", "12345", "plausible", []],
+    ["date", "2015-08-07", "valid", []],
+    ["date", "2015-08-06", "valid", []],
+    ["money", "2900.00 EUR", "plausible", []],
+    ["money", "100.00 EUR", "plausible", []],
+    ["money", "200.00 EUR", "plausible", []],
+    ["money", "300.00 EUR", "plausible", []],
+    ["money", "3500.00 EUR", "plausible", []],
+    ["money", "665.00 EUR", "plausible", []],
+    ["money", "4165.00 EUR", "plausible", []],
+    ["date", "2015-08-17", "valid", []],
+    ["iban", "DE3712345679999999999", "invalid", []],
+    ["tax_number", "12345613", "invalid", []],
+    ["party", "max mustermann", "plausible", ["owner"]]
+  ],
+  "invoices/3/sample_invoice_3.pdf": [
+    ["postal_code", "12345", "plausible", []],
+    ["date", "2015-08-07", "valid", []],
+    ["money", "50.00 EUR", "plausible", []],
+    ["money", "100.00 EUR", "plausible", []],
+    ["money", "2.00 EUR", "plausible", []],
+    ["money", "10.00 EUR", "plausible", []],
+    ["money", "110.00 EUR", "plausible", []],
+    ["money", "20.90 EUR", "plausible", []],
+    ["money", "130.90 EUR", "plausible", []],
+    ["iban", "DE37123456789999999999", "invalid", []],
+    ["tax_number", "12345613", "invalid", []],
+    ["party", "max mustermann", "plausible", ["owner"]]
+  ],
+  "invoices/4/sample_invoice_4.pdf": [
+    ["postal_code", "12345", "plausible", []],
+    ["date", "2015-08-07", "valid", []],
+    ["money", "120.00 EUR", "plausible", []],
+    ["money", "240.00 EUR", "plausible", []],
+    ["money", "98.00 EUR", "plausible", []],
+    ["money", "12.00 EUR", "plausible", []],
+    ["money", "24.00 EUR", "plausible", []],
+    ["money", "362.00 EUR", "plausible", []],
+    ["money", "68.78 EUR", "plausible", []],
+    ["money", "430.78 EUR", "plausible", []],
+    ["tax_number", "12345613", "invalid", []],
+    ["party", "max mustermann", "plausible", ["owner"]]
+  ]
+}

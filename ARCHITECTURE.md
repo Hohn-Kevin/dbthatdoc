@@ -107,6 +107,11 @@ such as `Inh.` may associate a name-like value with the `owner` role, but the
 entity remains `plausible` because document context cannot prove a real-world
 identity by itself.
 
+Digital PDF form values are extracted from AcroForm text widgets, including
+their field labels and page positions. This keeps analysis input aligned with
+the values visible to OCR in flattened scan equivalents without requiring OCR
+for every digital PDF.
+
 Repeated normalized entities are represented once with multiple evidence
 locations. Raw key-value candidates reference entities found in their source
 blocks, allowing later role and identity resolution without discarding the
@@ -123,6 +128,24 @@ The initial German rules follow primary public references:
 - [German IBAN structure (Deutsche Bundesbank)](https://www.bundesbank.de/de/aufgaben/unbarer-zahlungsverkehr/serviceangebot/iban-regeln)
 - [German tax-number schemas (ELSTER)](https://www.elster.de/eportal/helpGlobal?themaGlobal=wo_ist_meine_steuernummer)
 - [State-specific tax-number checks (ELSTER)](https://download.elster.de/download/schnittstellen/Pruefung_der_Steuer_und_Steueridentifikatsnummer.pdf)
+
+German postal codes are `plausible` only when five digits occur in an explicit
+postal-code field or address context. The core does not claim directory-level
+validity: complete original postal data is licensed by Deutsche Post, BKG
+access is restricted, and the public Destatis municipality directory contains
+the postal code of the administrative seat rather than a complete delivery
+directory. A licensed local directory can be added later as an optional
+validator without introducing a network requirement.
+
+The sample regression matrix compares semantic entity signatures across all
+11 embedded/scan pairs. It also requires every entity kind and validation rule
+to occur in at least two document families. This is a guard against accidental
+sample specialization, not a substitute for an external specification or
+independent synthetic boundary tests.
+
+- [Postal reference data (Deutsche Post)](https://www.deutschepost.de/de/d/deutsche-post-direkt/datafactory.html)
+- [Licensed postal-code areas (BKG)](https://gdz.bkg.bund.de/index.php/default/wfs-postleitzahlgebiete-wfs-plz.html)
+- [Municipality directory scope (Destatis)](https://www.destatis.de/DE/Themen/Laender-Regionen/Regionales/Gemeindeverzeichnis/_inhalt.html)
 
 ### Semantic Layer
 

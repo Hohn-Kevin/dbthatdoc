@@ -42,7 +42,7 @@ def _content(*texts: str) -> DocumentContent:
 
 def test_german_entities_separate_combined_financial_fields() -> None:
     result = analyze_content(_content(
-        "IBAN: DE3712345679999 9999 99 Steuer-Nr.: 12345613"
+        "IBAN: DE00123456789012345678 Steuer-Nr.: 123456789"
     ))
 
     assert len(result.candidates) == 1
@@ -51,10 +51,10 @@ def test_german_entities_separate_combined_financial_fields() -> None:
     iban, tax_number = result.entities
 
     assert iban.kind == "iban"
-    assert iban.normalized_value == "DE3712345679999999999"
+    assert iban.normalized_value == "DE00123456789012345678"
     assert iban.validation_status == "invalid"
     assert tax_number.kind == "tax_number"
-    assert tax_number.normalized_value == "12345613"
+    assert tax_number.normalized_value == "123456789"
     assert tax_number.validation_status == "invalid"
     assert result.candidates[0].entity_ids == [iban.id, tax_number.id]
     assert len(result.warnings) == 2
@@ -132,6 +132,7 @@ def test_german_dates_use_calendar_validation() -> None:
         "Termin: 1. März 2024",
         "Kurzdatum: 03.04.25",
         "Unmöglich: 31.02.2024",
+        "ISO-Datum: 2018-05-21",
     ))
 
     dates = [
@@ -143,14 +144,81 @@ def test_german_dates_use_calendar_validation() -> None:
         "2024-03-01",
         "03.04.25",
         "2024-02-31",
+        "2018-05-21",
     ]
     assert [entity.validation_status for entity in dates] == [
         "valid",
         "valid",
         "plausible",
         "invalid",
+        "valid",
     ]
     assert dates[2].validation[1].passed is None
+
+
+def test_postal_codes_require_shape_and_address_context() -> None:
+    result = analyze_content(_content(
+        "Postleitzahl: 54321",
+        "Beispielweg 1 | 54321 Neustadt",
+        "Keine PLZ: 7911",
+        "Referenznummer: 123456",
+    ))
+
+    postal_codes = [
+        entity
+        for entity in result.entities
+        if entity.kind == "postal_code"
+    ]
+
+    assert len(postal_codes) == 1
+    assert postal_codes[0].normalized_value == "54321"
+    assert postal_codes[0].validation_status == "plausible"
+    assert postal_codes[0].validation[1].passed is None
+    assert len(postal_codes[0].evidence) == 2
+
+
+def test_postal_code_can_use_a_positioned_label() -> None:
+    content = _content("Postleitzahl", "54321")
+    label, value = content.pages[0].blocks
+    assert label.position is not None
+    assert value.position is not None
+    label.position.x0 = 10.0
+    label.position.x1 = 60.0
+    value.position.x0 = 80.0
+    value.position.x1 = 110.0
+    value.position.y0 = label.position.y0
+    value.position.y1 = label.position.y1
+
+    result = analyze_content(content)
+
+    postal_code = next(
+        entity
+        for entity in result.entities
+        if entity.kind == "postal_code"
+    )
+    assert postal_code.normalized_value == "54321"
+    assert len(postal_code.evidence) == 2
+
+
+def test_entity_can_span_adjacent_positioned_blocks() -> None:
+    content = _content("42,50", "EUR")
+    amount, currency = content.pages[0].blocks
+    assert amount.position is not None
+    assert currency.position is not None
+    amount.position.x0 = 10.0
+    amount.position.x1 = 50.0
+    currency.position.x0 = 60.0
+    currency.position.x1 = 90.0
+    currency.position.y0 = amount.position.y0
+    currency.position.y1 = amount.position.y1
+
+    result = analyze_content(content)
+
+    money = next(
+        entity for entity in result.entities if entity.kind == "money"
+    )
+    assert money.normalized_value == "42.50 EUR"
+    assert len(money.evidence) == 2
 
 
 def test_entity_analysis_can_be_disabled_explicitly() -> None:
@@ -168,9 +236,9 @@ def test_entity_analysis_can_be_disabled_explicitly() -> None:
 
 def test_repeated_owner_references_share_a_party_entity() -> None:
     result = analyze_content(_content(
-        "Firma Inh.: Max Mustermann",
-        "Kontoinhaber: Max Mustermann",
-        "Firma Inh.: Max Mustermann",
+        "Firma Inh.: Erika Musterfrau",
+        "Kontoinhaber: Erika Musterfrau",
+        "Firma Inh.: Erika Musterfrau",
     ))
 
     parties = [
@@ -178,8 +246,8 @@ def test_repeated_owner_references_share_a_party_entity() -> None:
     ]
 
     assert len(parties) == 1
-    assert parties[0].value == "Max Mustermann"
-    assert parties[0].normalized_value == "max mustermann"
+    assert parties[0].value == "Erika Musterfrau"
+    assert parties[0].normalized_value == "erika musterfrau"
     assert parties[0].validation_status == "plausible"
     assert parties[0].roles == ["owner"]
     assert parties[0].validation[1].passed is None
@@ -188,7 +256,7 @@ def test_repeated_owner_references_share_a_party_entity() -> None:
     assert result.candidates[2].entity_ids == [parties[0].id]
 
     later_result = analyze_content(_content(
-        "Inhaber: Max Mustermann"
+        "Inhaber: Erika Musterfrau"
     ))
     later_party = next(
         entity

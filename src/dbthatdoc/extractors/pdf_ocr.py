@@ -44,7 +44,7 @@ def extract_pdf_ocr(
             ocr_data = pytesseract.image_to_data(
                 image,
                 lang=language,
-                config="--psm 6",
+                config="--psm 3",
                 output_type=pytesseract.Output.DICT,
             )
 

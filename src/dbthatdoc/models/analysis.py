@@ -34,7 +34,14 @@ class ValidationCheck(BaseModel):
 
 class AnalysisEntity(BaseModel):
     id: str = Field(min_length=1)
-    kind: Literal["iban", "tax_number", "money", "date", "party"]
+    kind: Literal[
+        "iban",
+        "tax_number",
+        "money",
+        "date",
+        "postal_code",
+        "party",
+    ]
     value: str = Field(min_length=1)
     normalized_value: str = Field(min_length=1)
     validation_status: Literal["valid", "plausible", "invalid"]

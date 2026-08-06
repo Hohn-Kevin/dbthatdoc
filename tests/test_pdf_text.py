@@ -50,3 +50,27 @@ def test_detects_pdf_without_text_layer() -> None:
     assert result.text == ""
     assert any("OCR" in warning for warning in result.warnings)
     assert result.pages[0].elements == []
+
+
+def test_extracts_positioned_acroform_text_values() -> None:
+    result = extract_pdf_text(
+        SAMPLES_DIR.parent.parent
+        / "forms"
+        / "2"
+        / "sample_form_2.pdf"
+    )
+
+    form_fields = [
+        element
+        for page in result.pages
+        for element in page.elements
+        if element.element_type == "form_field"
+    ]
+
+    assert form_fields
+    assert any(
+        element.text == "Datum der Einführung: 2018-05-21"
+        for element in form_fields
+    )
+    assert all(element.x0 is not None for element in form_fields)
+    assert all(element.y0 is not None for element in form_fields)

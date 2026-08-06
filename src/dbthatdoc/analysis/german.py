@@ -12,6 +12,7 @@ from dbthatdoc.models import (
     AnalysisEntity,
     AnalysisEvidence,
     DocumentContent,
+    DocumentPage,
     TextBlock,
     ValidationCheck,
 )
@@ -33,6 +34,9 @@ _NUMERIC_DATE_PATTERN = re.compile(
     r"\b(?P<day>\d{1,2})\.\s*"
     r"(?P<month>\d{1,2})\.\s*"
     r"(?P<year>\d{2}|\d{4})\b"
+)
+_ISO_DATE_PATTERN = re.compile(
+    r"\b(?P<year>\d{4})-(?P<month>\d{1,2})-(?P<day>\d{1,2})\b"
 )
 _MONTHS = {
     "januar": 1,
@@ -58,6 +62,17 @@ _TEXT_DATE_PATTERN = re.compile(
 _OWNER_LABEL_PATTERN = re.compile(
     r"(?:^|\s)(?:Inh\.?|Inhaber|Inhaberin)$",
     re.IGNORECASE,
+)
+_LABELED_POSTAL_CODE_PATTERN = re.compile(
+    r"\b(?:PLZ|Postleitzahl)(?:\s+[\wÄÖÜäöüß.-]+){0,4}"
+    r"\s*:\s*(?P<postal_code>\d{5})\b",
+    re.IGNORECASE,
+)
+_ADDRESS_POSTAL_CODE_PATTERN = re.compile(
+    r"(?<!\d)(?P<postal_code>\d{5})\s+"
+    r"[A-ZÄÖÜ][A-Za-zÄÖÜäöüß-]+"
+    r"(?:\s+[A-Za-zÄÖÜäöüß-]+){0,3}"
+    r"(?=\s*(?:[|,\n]|$))"
 )
 
 
@@ -123,6 +138,28 @@ class GermanEntityAnalyzer:
                 for match in _find_matches(block.text):
                     add_match(match, evidence)
 
+            for label_index, value_index in _right_block_pairs(page):
+                label_block = page.blocks[label_index]
+                value_block = page.blocks[value_index]
+                adjacent_text = (
+                    f"{label_block.text} {value_block.text}"
+                )
+                labeled_text = (
+                    f"{label_block.text.rstrip(':')}: "
+                    f"{value_block.text}"
+                )
+
+                for match in _find_matches(adjacent_text):
+                    add_match(match, _evidence(label_block, label_index))
+                    add_match(match, _evidence(value_block, value_index))
+
+                for postal_match in (
+                    _LABELED_POSTAL_CODE_PATTERN.finditer(labeled_text)
+                ):
+                    match = _postal_code_match(postal_match)
+                    add_match(match, _evidence(label_block, label_index))
+                    add_match(match, _evidence(value_block, value_index))
+
         for candidate in candidates:
             party_match = _party_match(candidate)
 
@@ -144,9 +181,18 @@ def _find_matches(text: str) -> list[_EntityMatch]:
             _date_match(match, numeric_month=True)
             for match in _NUMERIC_DATE_PATTERN.finditer(text)
         ),
+        *(_iso_date_match(match) for match in _ISO_DATE_PATTERN.finditer(text)),
         *(
             _date_match(match, numeric_month=False)
             for match in _TEXT_DATE_PATTERN.finditer(text)
+        ),
+        *(
+            _postal_code_match(match)
+            for match in _LABELED_POSTAL_CODE_PATTERN.finditer(text)
+        ),
+        *(
+            _postal_code_match(match)
+            for match in _ADDRESS_POSTAL_CODE_PATTERN.finditer(text)
         ),
     ]
     return sorted(matches, key=lambda match: match.start)
@@ -354,6 +400,141 @@ def _date_match(
                 details=year_details,
             ),
         ),
+    )
+
+
+def _iso_date_match(match: re.Match[str]) -> _EntityMatch:
+    value = match.group(0)
+    year = int(match.group("year"))
+    month = int(match.group("month"))
+    day = int(match.group("day"))
+    calendar_valid = _calendar_date_valid(year, month, day)
+
+    return _EntityMatch(
+        start=match.start(),
+        kind="date",
+        value=value,
+        normalized_value=f"{year:04d}-{month:02d}-{day:02d}",
+        validation_status="valid" if calendar_valid else "invalid",
+        validation=(
+            ValidationCheck(
+                rule="iso_8601_calendar_date",
+                passed=calendar_valid,
+                details="ISO-style date with a valid Gregorian calendar day",
+            ),
+        ),
+    )
+
+
+def _postal_code_match(
+    match: re.Match[str],
+) -> _EntityMatch:
+    value = match.group("postal_code")
+    return _EntityMatch(
+        start=match.start("postal_code"),
+        kind="postal_code",
+        value=value,
+        normalized_value=value,
+        validation_status="plausible",
+        validation=(
+            ValidationCheck(
+                rule="de_postal_code_shape",
+                passed=True,
+                details="Five digits in a postal-code or address context",
+            ),
+            ValidationCheck(
+                rule="de_postal_code_directory",
+                passed=None,
+                details="No licensed local postal directory was configured",
+            ),
+        ),
+    )
+
+
+def _right_block_pairs(
+    page: DocumentPage,
+) -> list[tuple[int, int]]:
+    pairs: list[tuple[int, int]] = []
+
+    for label_index, label in enumerate(page.blocks):
+        if label.position is None:
+            continue
+
+        matches: list[tuple[float, int]] = []
+
+        for value_index, value in enumerate(page.blocks):
+            if (
+                value_index == label_index
+                or value.position is None
+                or not _is_right_neighbor(
+                    label,
+                    value,
+                    page.width,
+                )
+            ):
+                continue
+
+            assert label.position.x1 is not None
+            assert value.position.x0 is not None
+            matches.append((
+                value.position.x0 - label.position.x1,
+                value_index,
+            ))
+
+        if matches:
+            _, value_index = min(matches, key=lambda item: item[0])
+            pairs.append((label_index, value_index))
+
+    return pairs
+
+
+def _is_right_neighbor(
+    label_block: TextBlock,
+    value_block: TextBlock,
+    page_width: float | None,
+) -> bool:
+    label = label_block.position
+    value = value_block.position
+
+    if label is None or value is None or None in (
+        label.x0,
+        label.y0,
+        label.x1,
+        label.y1,
+        value.x0,
+        value.y0,
+        value.x1,
+        value.y1,
+    ):
+        return False
+
+    assert label.y0 is not None
+    assert label.y1 is not None
+    assert label.x1 is not None
+    assert value.y0 is not None
+    assert value.y1 is not None
+    assert value.x0 is not None
+
+    label_height = label.y1 - label.y0
+    value_height = value.y1 - value.y0
+    minimum_height = min(label_height, value_height)
+
+    if minimum_height <= 0:
+        return False
+
+    overlap = max(
+        0.0,
+        min(label.y1, value.y1) - max(label.y0, value.y0),
+    )
+    gap = value.x0 - label.x1
+    maximum_gap = max(
+        (page_width or 0.0) * 0.25,
+        label_height * 10.0,
+    )
+    return (
+        gap >= 0
+        and gap <= maximum_gap
+        and overlap / minimum_height >= 0.5
     )
 
 

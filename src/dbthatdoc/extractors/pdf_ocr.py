@@ -15,6 +15,9 @@ from dbthatdoc.models import (
 )
 
 
+_DEFAULT_TESSERACT_CONFIG = "--psm 1"
+
+
 def extract_pdf_ocr(
     file_path: str | Path,
     language: str = "deu+eng",
@@ -44,7 +47,7 @@ def extract_pdf_ocr(
             ocr_data = pytesseract.image_to_data(
                 image,
                 lang=language,
-                config="--psm 6",
+                config=_DEFAULT_TESSERACT_CONFIG,
                 output_type=pytesseract.Output.DICT,
             )
 

@@ -12,6 +12,9 @@ from dbthatdoc.models import (
 )
 
 
+_POSITIONED_TEXT_ELEMENT_TYPES = {"word", "form_field"}
+
+
 def _has_position(element: ExtractedElement) -> bool:
     return (
         element.x0 is not None
@@ -202,7 +205,7 @@ def _group_elements_by_line(
         element
         for element in elements
         if (
-            element.element_type == "word"
+            element.element_type in _POSITIONED_TEXT_ELEMENT_TYPES
             and element.text.strip()
             and _has_plausible_position(element)
         )
@@ -231,7 +234,7 @@ def _group_elements_by_line(
     sorted_elements = sorted(
         positioned_elements,
         key=lambda element: (
-            _vertical_center(element),
+            element.y0 if element.y0 is not None else 0,
             element.x0 if element.x0 is not None else 0,
         ),
     )
@@ -362,7 +365,10 @@ def _group_elements_by_line(
             assert element.x0 is not None
 
             if (
-                element.x0 - previous_element.x1
+                element.element_type != previous_element.element_type
+                or element.element_type == "form_field"
+                or previous_element.element_type == "form_field"
+                or element.x0 - previous_element.x1
                 > horizontal_gap_threshold
             ):
                 text_runs.append(current_run)
@@ -417,7 +423,7 @@ def _unpositioned_elements_to_text_block(
         element
         for element in elements
         if (
-            element.element_type == "word"
+            element.element_type in _POSITIONED_TEXT_ELEMENT_TYPES
             and element.text.strip()
             and _has_no_position(element)
         )

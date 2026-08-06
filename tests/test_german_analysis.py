@@ -56,7 +56,9 @@ def test_german_entities_separate_combined_financial_fields() -> None:
     assert tax_number.kind == "tax_number"
     assert tax_number.normalized_value == "123456789"
     assert tax_number.validation_status == "invalid"
-    assert result.candidates[0].entity_ids == [iban.id, tax_number.id]
+    assert result.candidates[0].entity_ids == []
+    assert iban.evidence[0].start_offset is not None
+    assert tax_number.evidence[0].start_offset is not None
     assert len(result.warnings) == 2
 
 
@@ -120,8 +122,8 @@ def test_german_money_values_are_normalized_and_validated() -> None:
         "12.345 EUR",
     ]
     assert [entity.validation_status for entity in money] == [
-        "valid",
-        "valid",
+        "plausible",
+        "plausible",
         "invalid",
     ]
 
@@ -197,7 +199,7 @@ def test_postal_code_can_use_a_positioned_label() -> None:
         if entity.kind == "postal_code"
     )
     assert postal_code.normalized_value == "54321"
-    assert len(postal_code.evidence) == 2
+    assert len(postal_code.evidence) == 1
 
 
 def test_entity_can_span_adjacent_positioned_blocks() -> None:
@@ -249,9 +251,9 @@ def test_repeated_owner_references_share_a_party_entity() -> None:
     assert parties[0].value == "Erika Musterfrau"
     assert parties[0].normalized_value == "erika musterfrau"
     assert parties[0].validation_status == "plausible"
-    assert parties[0].roles == ["owner"]
+    assert parties[0].roles == ["owner", "account_holder"]
     assert parties[0].validation[1].passed is None
-    assert len(parties[0].evidence) == 2
+    assert len(parties[0].evidence) == 3
     assert result.candidates[0].entity_ids == [parties[0].id]
     assert result.candidates[2].entity_ids == [parties[0].id]
 
@@ -265,3 +267,90 @@ def test_repeated_owner_references_share_a_party_entity() -> None:
     )
 
     assert later_party.id == parties[0].id
+
+
+def test_party_role_does_not_depend_on_an_owner_example() -> None:
+    result = analyze_content(_content(
+        "Kontoinhaber: Erika Musterfrau"
+    ))
+
+    party = next(entity for entity in result.entities if entity.kind == "party")
+
+    assert party.roles == ["account_holder"]
+
+
+def test_party_role_rejects_enumerated_recipient_categories() -> None:
+    result = analyze_content(_content(
+        "Empf\u00e4nger: Steuerberater, Bank, Kreditversicherung"
+    ))
+
+    assert not any(entity.kind == "party" for entity in result.entities)
+
+
+def test_money_supports_prefix_spaces_and_negative_notation() -> None:
+    result = analyze_content(_content(
+        "Betrag A: EUR 1.234,56",
+        "Betrag B: \u20ac 20,00",
+        "Betrag C: 1 234,56 EUR",
+        "Betrag D: -12,50 EUR",
+        "Betrag E: 12,50 EUR-",
+    ))
+
+    money = [entity for entity in result.entities if entity.kind == "money"]
+
+    assert [entity.normalized_value for entity in money] == [
+        "1234.56 EUR",
+        "20.00 EUR",
+        "-12.50 EUR",
+    ]
+    assert all(entity.validation_status == "plausible" for entity in money)
+    assert [len(entity.evidence) for entity in money] == [2, 1, 2]
+
+
+def test_money_fragments_on_different_rows_are_not_combined() -> None:
+    content = _content("15,00", "EUR")
+    amount, currency = content.pages[0].blocks
+    assert amount.position is not None
+    assert currency.position is not None
+    amount.position.x0 = 10.0
+    amount.position.x1 = 50.0
+    currency.position.x0 = 60.0
+    currency.position.x1 = 90.0
+
+    result = analyze_content(content)
+
+    assert not any(entity.kind == "money" for entity in result.entities)
+
+
+def test_money_fragments_with_an_intervening_cell_are_not_combined() -> None:
+    content = _content("15,00", "Menge", "EUR")
+    amount, middle, currency = content.pages[0].blocks
+    for block, x0, x1 in (
+        (amount, 10.0, 40.0),
+        (middle, 45.0, 55.0),
+        (currency, 60.0, 90.0),
+    ):
+        assert block.position is not None
+        block.position.x0 = x0
+        block.position.x1 = x1
+        block.position.y0 = 10.0
+        block.position.y1 = 20.0
+
+    result = analyze_content(content)
+
+    assert not any(entity.kind == "money" for entity in result.entities)
+
+
+def test_invalid_low_confidence_entity_is_marked_as_possible_ocr_damage() -> None:
+    content = _content("IBAN: DE00123456789012345678")
+    content.pages[0].blocks[0].confidence = 0.4
+
+    result = analyze_content(content)
+    iban = next(entity for entity in result.entities if entity.kind == "iban")
+
+    assert iban.recognition_status == "suspected_ocr_corruption"
+    assert result.warnings[0].startswith("Suspected OCR corruption")
+    assert {check.dimension for check in iban.validation} == {
+        "structure",
+        "checksum",
+    }

@@ -19,8 +19,14 @@ def extract_pdf_ocr(
     file_path: str | Path,
     language: str = "deu+eng",
     scale: float = 3.0,
+    page_segmentation_mode: int = 3,
 ) -> ExtractionResult:
     path = Path(file_path).resolve()
+
+    if page_segmentation_mode not in range(14):
+        raise ValueError(
+            "Tesseract page segmentation mode must be between 0 and 13"
+        )
 
     if not path.exists():
         raise FileNotFoundError(f"Datei nicht gefunden: {path}")
@@ -44,7 +50,7 @@ def extract_pdf_ocr(
             ocr_data = pytesseract.image_to_data(
                 image,
                 lang=language,
-                config="--psm 3",
+                config=f"--psm {page_segmentation_mode}",
                 output_type=pytesseract.Output.DICT,
             )
 

@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from dbthatdoc.extractors import extract_pdf_ocr
 
 
@@ -38,3 +40,8 @@ def test_extracts_positioned_elements_from_scan_pdf() -> None:
 
         if element.confidence is not None:
             assert 0.0 <= element.confidence <= 1.0
+
+
+def test_extract_pdf_ocr_rejects_unknown_page_segmentation_mode() -> None:
+    with pytest.raises(ValueError, match="between 0 and 13"):
+        extract_pdf_ocr("unused.pdf", page_segmentation_mode=14)

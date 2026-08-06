@@ -67,7 +67,7 @@ def test_analysis_extracts_inline_key_value_candidate() -> None:
     assert result.source_file == "analysis.pdf"
     assert len(result.candidates) == 1
     assert result.analyzers[0].name == "key_value"
-    assert result.analyzers[0].version == "1.0"
+    assert result.analyzers[0].version == "1.1"
 
     candidate = result.candidates[0]
 
@@ -163,6 +163,33 @@ def test_analysis_ignores_sentence_length_labels() -> None:
             20.0,
         ),
     ])
+
+    result = analyze_content(content)
+
+    assert result.candidates == []
+
+
+def test_analysis_accepts_long_structured_label_with_numeric_value() -> None:
+    content = _content([_block(
+        "Datum der letzten verbindlichen schriftlichen Mitteilung an den Kunden: 01.02.2026",
+        10.0,
+        10.0,
+        190.0,
+        20.0,
+    )])
+
+    result = analyze_content(content)
+
+    assert len(result.candidates) == 1
+    assert result.candidates[0].value == "01.02.2026"
+
+
+def test_analysis_does_not_bridge_a_wide_column_gap() -> None:
+    content = _content([
+        _block("Referenz:", 10.0, 10.0, 40.0, 20.0),
+        _block("12345", 101.0, 10.0, 130.0, 20.0),
+    ])
+    content.pages[0].width = 1000.0
 
     result = analyze_content(content)
 

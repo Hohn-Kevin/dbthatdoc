@@ -95,6 +95,10 @@ downstream classification and entity extraction can inspect its evidence.
 Analyzers are replaceable components. The initial analyzer identifies generic
 key-value structures from inline separators and nearby positioned blocks; it
 does not encode document types, field names, or sample-specific vocabulary.
+Spatial relationships use configurable distances relative to the observed line
+height. Entity analysis does not concatenate arbitrary neighboring blocks: it
+only composes adjacent same-line fragments for complementary amount/currency
+tokens or an explicit postal-code label followed by five digits.
 
 German document entities are a separate, locale-specific analysis component.
 It normalizes IBANs, tax numbers, monetary values, and dates and reports each
@@ -116,6 +120,16 @@ Repeated normalized entities are represented once with multiple evidence
 locations. Raw key-value candidates reference entities found in their source
 blocks, allowing later role and identity resolution without discarding the
 original document text.
+Evidence and candidates carry exact character offsets. A candidate references
+an entity only when its value span overlaps exactly one entity span; ambiguous
+multi-entity values remain unlinked rather than claiming a false association.
+
+Validation checks declare whether they concern syntax, structure, checksum,
+semantics, or external reference data. Recognition is recorded separately:
+an invalid high-confidence observation remains recognized-but-invalid, while
+an invalid low-confidence OCR observation is marked as suspected OCR damage.
+Money notation alone is therefore plausible, not valid, because it does not
+establish the amount's accounting meaning.
 
 Entity IDs are deterministic fingerprints of entity type and normalized value.
 Separate analysis runs can therefore reference the same normalized observation
@@ -138,10 +152,17 @@ directory. A licensed local directory can be added later as an optional
 validator without introducing a network requirement.
 
 The sample regression matrix compares semantic entity signatures across all
-11 embedded/scan pairs. It also requires every entity kind and validation rule
-to occur in at least two document families. This is a guard against accidental
-sample specialization, not a substitute for an external specification or
-independent synthetic boundary tests.
+11 embedded/scan pairs and against a fixed reviewed ground-truth fixture,
+reporting global and per-entity-kind precision and recall. It also requires
+every entity kind and
+validation rule to occur in at least two document families. This development
+set is supplemented by synthetic boundary and counterexample tests; it is not
+an independent holdout corpus.
+
+Tesseract page segmentation mode 3 remains the default, but is configurable
+through the extraction API and the CLI `--ocr-psm` option. This makes layout
+assumptions explicit and allows future document-family profiles without
+silently changing current extraction behavior.
 
 - [Postal reference data (Deutsche Post)](https://www.deutschepost.de/de/d/deutsche-post-direkt/datafactory.html)
 - [Licensed postal-code areas (BKG)](https://gdz.bkg.bund.de/index.php/default/wfs-postleitzahlgebiete-wfs-plz.html)

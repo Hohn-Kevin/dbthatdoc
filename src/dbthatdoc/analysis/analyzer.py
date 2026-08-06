@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass, field
 from typing import Protocol
 
 from dbthatdoc.models import (
@@ -16,9 +17,19 @@ from dbthatdoc.models import (
 )
 
 from dbthatdoc.analysis.german import GermanEntityAnalyzer
+from dbthatdoc.analysis.layout import (
+    LayoutConfig,
+    is_below_neighbor,
+    is_right_neighbor,
+)
 
 
-_MAX_LABEL_WORDS = 7
+@dataclass(frozen=True)
+class KeyValueConfig:
+    preferred_maximum_label_words: int = 7
+    maximum_label_words: int = 16
+    minimum_label_score: int = 5
+    layout: LayoutConfig = field(default_factory=LayoutConfig)
 
 
 class Analyzer(Protocol):
@@ -44,7 +55,10 @@ class EntityAnalyzer(Protocol):
 
 class KeyValueAnalyzer:
     name = "key_value"
-    version = "1.0"
+    version = "1.1"
+
+    def __init__(self, config: KeyValueConfig | None = None) -> None:
+        self.config = config or KeyValueConfig()
 
     def analyze(
         self,
@@ -57,6 +71,7 @@ class KeyValueAnalyzer:
                 inline_candidate = _inline_candidate(
                     block,
                     block_index,
+                    self.config,
                 )
 
                 if inline_candidate is not None:
@@ -67,19 +82,26 @@ class KeyValueAnalyzer:
 
                 if (
                     not label.endswith(":")
-                    or not _is_candidate_label(label[:-1])
+                    or not label[:-1].strip()
                 ):
                     continue
 
                 value_match = _nearest_spatial_value(
                     page,
                     block_index,
+                    self.config.layout,
                 )
 
                 if value_match is None:
                     continue
 
                 value_index, value_block, relation = value_match
+                if not _is_candidate_label(
+                    label[:-1],
+                    value_block.text,
+                    self.config,
+                ):
+                    continue
                 candidates.append(
                     AnalysisCandidate(
                         label=label[:-1].strip(),
@@ -89,9 +111,23 @@ class KeyValueAnalyzer:
                             [block, value_block]
                         ),
                         evidence=[
-                            _evidence(block, block_index),
-                            _evidence(value_block, value_index),
+                            _evidence(
+                                block,
+                                block_index,
+                                0,
+                                len(block.text),
+                            ),
+                            _evidence(
+                                value_block,
+                                value_index,
+                                0,
+                                len(value_block.text),
+                            ),
                         ],
+                        label_start_offset=0,
+                        label_end_offset=len(label) - 1,
+                        value_start_offset=0,
+                        value_end_offset=len(value_block.text),
                     )
                 )
 
@@ -146,6 +182,7 @@ def analyze_content(
 def _inline_candidate(
     block: TextBlock,
     block_index: int,
+    config: KeyValueConfig,
 ) -> AnalysisCandidate | None:
     separator_index = next(
         (
@@ -162,11 +199,22 @@ def _inline_candidate(
     if separator_index is None:
         return None
 
-    label = block.text[:separator_index].strip()
-    value = block.text[separator_index + 1:].strip()
+    raw_label = block.text[:separator_index]
+    raw_value = block.text[separator_index + 1:]
+    label = raw_label.strip()
+    value = raw_value.strip()
+    label_start = len(raw_label) - len(raw_label.lstrip())
+    label_end = len(raw_label.rstrip())
+    value_start = (
+        separator_index
+        + 1
+        + len(raw_value)
+        - len(raw_value.lstrip())
+    )
+    value_end = len(block.text.rstrip())
 
     if (
-        not _is_candidate_label(label)
+        not _is_candidate_label(label, value, config)
         or not value
         or not any(character.isalnum() for character in value)
     ):
@@ -177,13 +225,25 @@ def _inline_candidate(
         value=value,
         relation="inline",
         confidence=block.confidence,
-        evidence=[_evidence(block, block_index)],
+        evidence=[
+            _evidence(
+                block,
+                block_index,
+                label_start,
+                value_end,
+            )
+        ],
+        label_start_offset=label_start,
+        label_end_offset=label_end,
+        value_start_offset=value_start,
+        value_end_offset=value_end,
     )
 
 
 def _nearest_spatial_value(
     page: DocumentPage,
     label_index: int,
+    layout: LayoutConfig,
 ) -> tuple[int, TextBlock, str] | None:
     label_block = page.blocks[label_index]
     label_position = label_block.position
@@ -207,10 +267,10 @@ def _nearest_spatial_value(
         ):
             continue
 
-        if _is_right_value(
+        if is_right_neighbor(
             label_position,
             value_block.position,
-            page.width,
+            layout,
         ):
             right_matches.append((
                 _horizontal_gap(label_position, value_block.position),
@@ -219,9 +279,10 @@ def _nearest_spatial_value(
             ))
             continue
 
-        if _is_below_value(
+        if is_below_neighbor(
             label_position,
             value_block.position,
+            layout,
         ):
             below_matches.append((
                 _vertical_gap(label_position, value_block.position),
@@ -246,98 +307,32 @@ def _nearest_spatial_value(
     return None
 
 
-def _is_right_value(
-    label: TextPosition,
-    value: TextPosition,
-    page_width: float | None,
+def _is_candidate_label(
+    text: str,
+    value: str,
+    config: KeyValueConfig,
 ) -> bool:
-    if None in (
-        label.x0,
-        label.y0,
-        label.x1,
-        label.y1,
-        value.x0,
-        value.y0,
-        value.x1,
-        value.y1,
+    label = text.strip()
+
+    if not label or not any(character.isalnum() for character in label):
+        return False
+
+    word_count = len(label.split())
+    score = 2
+    score += 1 if word_count <= config.preferred_maximum_label_words else 0
+    score += 1 if len(label) <= 80 else 0
+    score += 1 if not any(mark in label for mark in ",;!?") else 0
+    score += 1 if any(character.isdigit() for character in value) else 0
+
+    if word_count > config.maximum_label_words:
+        score -= 3
+    if (
+        word_count > config.preferred_maximum_label_words
+        and len(value.split()) > 3
     ):
-        return False
+        score -= 2
 
-    assert label.x0 is not None
-    assert label.y0 is not None
-    assert label.x1 is not None
-    assert label.y1 is not None
-    assert value.x0 is not None
-    assert value.y0 is not None
-    assert value.x1 is not None
-    assert value.y1 is not None
-
-    overlap = max(
-        0.0,
-        min(label.y1, value.y1) - max(label.y0, value.y0),
-    )
-    minimum_height = min(
-        label.y1 - label.y0,
-        value.y1 - value.y0,
-    )
-
-    if minimum_height <= 0:
-        return False
-
-    maximum_gap = max(
-        (page_width or 0.0) * 0.25,
-        (label.y1 - label.y0) * 10.0,
-    )
-
-    return (
-        value.x0 >= label.x1
-        and overlap / minimum_height >= 0.50
-        and _horizontal_gap(label, value) <= maximum_gap
-    )
-
-
-def _is_below_value(
-    label: TextPosition,
-    value: TextPosition,
-) -> bool:
-    if None in (
-        label.x0,
-        label.y0,
-        label.x1,
-        label.y1,
-        value.x0,
-        value.y0,
-        value.x1,
-        value.y1,
-    ):
-        return False
-
-    assert label.x0 is not None
-    assert label.y0 is not None
-    assert label.x1 is not None
-    assert label.y1 is not None
-    assert value.x0 is not None
-    assert value.y0 is not None
-    assert value.x1 is not None
-    assert value.y1 is not None
-
-    label_height = label.y1 - label.y0
-
-    if label_height <= 0 or value.y1 <= value.y0:
-        return False
-
-    maximum_gap = label_height
-    horizontal_overlap = max(
-        0.0,
-        min(label.x1, value.x1) - max(label.x0, value.x0),
-    )
-    starts_near_label = abs(value.x0 - label.x0) <= label_height * 2.0
-
-    return (
-        value.y0 >= label.y1
-        and _vertical_gap(label, value) <= maximum_gap
-        and (horizontal_overlap > 0 or starts_near_label)
-    )
+    return score >= config.minimum_label_score
 
 
 def _horizontal_gap(
@@ -358,19 +353,11 @@ def _vertical_gap(
     return value.y0 - label.y1
 
 
-def _is_candidate_label(text: str) -> bool:
-    label = text.strip()
-    return (
-        bool(label)
-        and any(character.isalnum() for character in label)
-        # Labels identify values; sentence-length prose is not a stable key.
-        and len(label.split()) <= _MAX_LABEL_WORDS
-    )
-
-
 def _evidence(
     block: TextBlock,
     block_index: int,
+    start_offset: int | None = None,
+    end_offset: int | None = None,
 ) -> AnalysisEvidence:
     return AnalysisEvidence(
         page_number=block.page_number,
@@ -379,6 +366,8 @@ def _evidence(
         source=block.source,
         confidence=block.confidence,
         position=block.position,
+        start_offset=start_offset,
+        end_offset=end_offset,
     )
 
 
@@ -401,23 +390,44 @@ def _attach_entities(
     candidates: list[AnalysisCandidate],
     entities: list[AnalysisEntity],
 ) -> list[AnalysisCandidate]:
-    entity_ids_by_block: dict[tuple[int, int], list[str]] = {}
+    entities_by_block: dict[
+        tuple[int, int],
+        list[tuple[str, AnalysisEvidence]],
+    ] = {}
 
     for entity in entities:
         for evidence in entity.evidence:
             key = (evidence.page_number, evidence.block_index)
-            entity_ids_by_block.setdefault(key, []).append(entity.id)
+            entities_by_block.setdefault(key, []).append((
+                entity.id,
+                evidence,
+            ))
 
     enriched: list[AnalysisCandidate] = []
 
     for candidate in candidates:
-        entity_ids: list[str] = []
-
-        for evidence in candidate.evidence:
-            key = (evidence.page_number, evidence.block_index)
-            for entity_id in entity_ids_by_block.get(key, []):
-                if entity_id not in entity_ids:
-                    entity_ids.append(entity_id)
+        value_evidence = (
+            candidate.evidence[0]
+            if candidate.relation == "inline"
+            else candidate.evidence[-1]
+        )
+        key = (
+            value_evidence.page_number,
+            value_evidence.block_index,
+        )
+        overlapping_ids = {
+            entity_id
+            for entity_id, entity_evidence in entities_by_block.get(key, [])
+            if _evidence_overlaps_candidate_value(
+                candidate,
+                entity_evidence,
+            )
+        }
+        entity_ids = (
+            list(overlapping_ids)
+            if len(overlapping_ids) == 1
+            else []
+        )
 
         enriched.append(candidate.model_copy(
             update={"entity_ids": entity_ids}
@@ -426,15 +436,40 @@ def _attach_entities(
     return enriched
 
 
+def _evidence_overlaps_candidate_value(
+    candidate: AnalysisCandidate,
+    evidence: AnalysisEvidence,
+) -> bool:
+    if (
+        candidate.value_start_offset is None
+        or candidate.value_end_offset is None
+        or evidence.start_offset is None
+        or evidence.end_offset is None
+    ):
+        return False
+
+    return (
+        evidence.start_offset < candidate.value_end_offset
+        and evidence.end_offset > candidate.value_start_offset
+    )
+
+
 def _validation_warnings(
     entities: list[AnalysisEntity],
 ) -> list[str]:
     return [
         (
-            f"Invalid {entity.kind} candidate at page "
+            f"{_recognition_warning_label(entity.recognition_status)} "
+            f"{entity.kind} at page "
             f"{entity.evidence[0].page_number}, block "
             f"{entity.evidence[0].block_index}."
         )
         for entity in entities
         if entity.validation_status == "invalid"
     ]
+
+
+def _recognition_warning_label(status: str) -> str:
+    if status == "suspected_ocr_corruption":
+        return "Suspected OCR corruption in"
+    return "Recognized invalid"

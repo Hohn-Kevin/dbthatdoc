@@ -430,6 +430,74 @@ def test_normalization_splits_sparse_columns() -> None:
     assert content.full_text == "Left\nRight"
 
 
+def test_normalization_orders_form_fields_geometrically_as_own_blocks() -> None:
+    extraction = ExtractionResult(
+        source=SourceInfo(
+            filename="form.pdf",
+            path="form.pdf",
+            media_type="application/pdf",
+            source_type="pdf",
+            file_size_bytes=1,
+            sha256="abc",
+        ),
+        pages=[
+            PageContent(
+                page_number=1,
+                text="Postleitzahl",
+                width=300.0,
+                height=100.0,
+                elements=[
+                    ExtractedElement(
+                        text="Berlin",
+                        element_type="form_field",
+                        x0=180.0,
+                        y0=10.2,
+                        x1=240.0,
+                        y1=22.0,
+                    ),
+                    ExtractedElement(
+                        text="54321",
+                        element_type="form_field",
+                        x0=100.0,
+                        y0=10.1,
+                        x1=160.0,
+                        y1=22.0,
+                    ),
+                    ExtractedElement(
+                        text="Postleitzahl",
+                        element_type="word",
+                        x0=10.0,
+                        y0=12.0,
+                        x1=80.0,
+                        y1=20.0,
+                    ),
+                    ExtractedElement(
+                        text="Ort",
+                        element_type="word",
+                        x0=10.0,
+                        y0=32.0,
+                        x1=30.0,
+                        y1=40.0,
+                    ),
+                ],
+            ),
+        ],
+        text="Postleitzahl",
+        processing=ProcessingInfo(
+            extractor="test-extractor",
+            page_count=1,
+            extraction_method="test",
+            text_extracted=True,
+        ),
+    )
+
+    content = normalize_extraction(extraction)
+
+    assert [
+        block.text for block in content.pages[0].blocks
+    ] == ["Postleitzahl", "54321", "Berlin", "Ort"]
+
+
 def test_normalization_preserves_proportional_fine_print_at_page_edge() -> None:
     extraction = ExtractionResult(
         source=SourceInfo(

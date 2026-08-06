@@ -80,6 +80,13 @@ The extraction priority is:
 
 OCR functionality should be implemented through replaceable backends.
 
+The Tesseract backend uses automatic page segmentation with orientation and
+script detection (`--psm 1`) as its default heuristic. The default is covered
+against invoices, tables, mixed forms, sparse forms, normal letters, narrow
+receipts, and rotated layouts. Callers do not currently select OCR profiles
+through the Extraction API; adding configurable profiles is a separate API
+decision.
+
 Possible engines include:
 
 - Tesseract OCR

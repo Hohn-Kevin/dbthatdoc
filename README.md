@@ -11,7 +11,7 @@ It extracts, normalizes, and structures information from documents and media fil
 - Unified extraction results
 - Normalized page and text-block structure
 - Evidence-backed key-value candidates
-- Validated German IBAN, tax-number, money, and date entities
+- Normalized German entities with explicit validation and plausibility checks
 - Local processing pipeline
 
 ## Roadmap

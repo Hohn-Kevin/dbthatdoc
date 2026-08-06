@@ -75,7 +75,8 @@ def test_analysis_extracts_inline_key_value_candidate() -> None:
     assert candidate.label == "Label"
     assert candidate.value == "Value"
     assert candidate.relation == "inline"
-    assert candidate.confidence == 0.8
+    assert candidate.candidate_type == "colon_structure"
+    assert candidate.source_confidence == 0.8
     assert len(candidate.evidence) == 1
     assert candidate.evidence[0].page_number == 1
     assert candidate.evidence[0].block_index == 0
@@ -99,7 +100,8 @@ def test_analysis_matches_nearest_value_to_the_right() -> None:
     assert candidate.label == "Label"
     assert candidate.value == "Value"
     assert candidate.relation == "right"
-    assert candidate.confidence == 0.7
+    assert candidate.candidate_type == "spatial_key_value"
+    assert candidate.source_confidence == 0.7
     assert [
         evidence.block_index for evidence in candidate.evidence
     ] == [0, 1]
@@ -149,7 +151,7 @@ def test_analysis_supports_unpositioned_inline_evidence() -> None:
     result = analyze_content(content)
 
     assert len(result.candidates) == 1
-    assert result.candidates[0].confidence is None
+    assert result.candidates[0].source_confidence is None
     assert result.candidates[0].evidence[0].position is None
 
 
@@ -167,6 +169,7 @@ def test_analysis_treats_colon_structure_independently_of_value_type() -> None:
     result = analyze_content(content)
 
     assert len(result.candidates) == 1
+    assert result.candidates[0].candidate_type == "colon_structure"
     assert result.candidates[0].value == "more prose"
 
 

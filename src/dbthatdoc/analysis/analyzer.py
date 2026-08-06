@@ -106,7 +106,8 @@ class KeyValueAnalyzer:
                         label=label[:-1].strip(),
                         value=value_block.text.strip(),
                         relation=relation,
-                        confidence=_average_confidence(
+                        candidate_type="spatial_key_value",
+                        source_confidence=_average_source_confidence(
                             [block, value_block]
                         ),
                         evidence=[
@@ -223,7 +224,8 @@ def _inline_candidate(
         label=label,
         value=value,
         relation="inline",
-        confidence=block.confidence,
+        candidate_type="colon_structure",
+        source_confidence=block.confidence,
         evidence=[
             _evidence(
                 block,
@@ -363,7 +365,7 @@ def _evidence(
     )
 
 
-def _average_confidence(
+def _average_source_confidence(
     blocks: list[TextBlock],
 ) -> float | None:
     confidences = [

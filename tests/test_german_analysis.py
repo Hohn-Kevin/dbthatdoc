@@ -78,7 +78,7 @@ def test_valid_iban_is_normalized_checked_and_referenced_once() -> None:
     assert entities[0].validation_status == "valid"
     assert all(check.passed for check in entities[0].validation)
     assert len(entities[0].evidence) == 2
-    assert entities[0].confidence == pytest.approx(0.85)
+    assert entities[0].source_confidence == pytest.approx(0.85)
     assert all(
         candidate.entity_ids == [entities[0].id]
         for candidate in result.candidates

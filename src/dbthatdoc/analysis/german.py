@@ -169,7 +169,9 @@ class GermanEntityAnalyzer:
             if existing is not None:
                 if not _contains_evidence(existing, evidence):
                     existing.evidence.append(evidence)
-                    existing.confidence = _average_confidence(existing.evidence)
+                    existing.source_confidence = _average_source_confidence(
+                        existing.evidence
+                    )
                 for role in match.roles:
                     if role not in existing.roles:
                         existing.roles.append(role)
@@ -192,7 +194,7 @@ class GermanEntityAnalyzer:
                 party_type=match.party_type,
                 validation=list(match.validation),
                 roles=list(match.roles),
-                confidence=evidence.confidence,
+                source_confidence=evidence.confidence,
                 evidence=[evidence],
             )
             entities.append(entity)
@@ -791,6 +793,8 @@ def _contains_evidence(entity: AnalysisEntity, evidence: AnalysisEvidence) -> bo
     )
 
 
-def _average_confidence(evidence: list[AnalysisEvidence]) -> float | None:
+def _average_source_confidence(
+    evidence: list[AnalysisEvidence],
+) -> float | None:
     confidences = [item.confidence for item in evidence if item.confidence is not None]
     return sum(confidences) / len(confidences) if confidences else None

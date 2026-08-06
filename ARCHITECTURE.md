@@ -89,8 +89,15 @@ Possible engines include:
 
 Analysis consumes normalized `DocumentContent` and produces explicit candidates
 rather than modifying extraction or normalization results. Each candidate retains
-its source block indices, page, extraction source, confidence, and position so
+its source block indices, page, extraction source, source confidence, and
+position so
 downstream classification and entity extraction can inspect its evidence.
+
+`source_confidence` describes only the underlying extraction or OCR evidence;
+it is not confidence in an Analysis interpretation. Inline colon-separated
+observations are exposed as `colon_structure`, including sentence-like prose.
+Positioned label/value observations are exposed as `spatial_key_value`. Both
+remain candidates rather than asserted semantic facts.
 
 Analyzers are replaceable components. The initial analyzer identifies generic
 key-value structures from inline separators and nearby positioned blocks; it

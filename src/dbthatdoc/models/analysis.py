@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from dbthatdoc.models.content import TextPosition
 
@@ -17,19 +17,63 @@ class AnalysisEvidence(BaseModel):
     start_offset: int | None = Field(default=None, ge=0)
     end_offset: int | None = Field(default=None, ge=0)
 
+    @model_validator(mode="after")
+    def validate_offsets(self) -> Self:
+        _validate_offset_pair(
+            "evidence",
+            self.start_offset,
+            self.end_offset,
+            len(self.text),
+        )
+        return self
+
 
 class AnalysisCandidate(BaseModel):
     kind: Literal["key_value"] = "key_value"
     label: str = Field(min_length=1)
     value: str = Field(min_length=1)
     relation: Literal["inline", "right", "below"]
-    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    candidate_type: Literal["colon_structure", "spatial_key_value"]
+    source_confidence: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+    )
     evidence: list[AnalysisEvidence] = Field(min_length=1)
     entity_ids: list[str] = Field(default_factory=list)
     label_start_offset: int | None = Field(default=None, ge=0)
     label_end_offset: int | None = Field(default=None, ge=0)
     value_start_offset: int | None = Field(default=None, ge=0)
     value_end_offset: int | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def validate_offsets(self) -> Self:
+        label_text = self.evidence[0].text
+        value_text = (
+            self.evidence[0].text
+            if self.relation == "inline"
+            else self.evidence[-1].text
+        )
+        _validate_offset_pair(
+            "label",
+            self.label_start_offset,
+            self.label_end_offset,
+            len(label_text),
+        )
+        _validate_offset_pair(
+            "value",
+            self.value_start_offset,
+            self.value_end_offset,
+            len(value_text),
+        )
+        if (
+            self.relation == "inline"
+            and self.label_end_offset is not None
+            and self.value_start_offset is not None
+            and self.label_end_offset > self.value_start_offset
+        ):
+            raise ValueError("inline label and value offsets must not overlap")
+        return self
 
 
 class ValidationCheck(BaseModel):
@@ -70,7 +114,11 @@ class AnalysisEntity(BaseModel):
     ] | None = None
     validation: list[ValidationCheck] = Field(min_length=1)
     roles: list[str] = Field(default_factory=list)
-    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    source_confidence: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+    )
     evidence: list[AnalysisEvidence] = Field(min_length=1)
 
 
@@ -85,3 +133,19 @@ class AnalysisResult(BaseModel):
     entities: list[AnalysisEntity] = Field(default_factory=list)
     analyzers: list[AnalyzerInfo] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+
+
+def _validate_offset_pair(
+    name: str,
+    start: int | None,
+    end: int | None,
+    text_length: int,
+) -> None:
+    if (start is None) != (end is None):
+        raise ValueError(f"{name} offsets must be provided together")
+    if start is None or end is None:
+        return
+    if start >= end:
+        raise ValueError(f"{name} start offset must be before end offset")
+    if end > text_length:
+        raise ValueError(f"{name} end offset exceeds evidence text")

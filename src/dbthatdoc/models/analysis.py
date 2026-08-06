@@ -23,6 +23,25 @@ class AnalysisCandidate(BaseModel):
     relation: Literal["inline", "right", "below"]
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     evidence: list[AnalysisEvidence] = Field(min_length=1)
+    entity_ids: list[str] = Field(default_factory=list)
+
+
+class ValidationCheck(BaseModel):
+    rule: str = Field(min_length=1)
+    passed: bool | None = None
+    details: str = Field(min_length=1)
+
+
+class AnalysisEntity(BaseModel):
+    id: str = Field(min_length=1)
+    kind: Literal["iban", "tax_number", "money", "date", "party"]
+    value: str = Field(min_length=1)
+    normalized_value: str = Field(min_length=1)
+    validation_status: Literal["valid", "plausible", "invalid"]
+    validation: list[ValidationCheck] = Field(min_length=1)
+    roles: list[str] = Field(default_factory=list)
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    evidence: list[AnalysisEvidence] = Field(min_length=1)
 
 
 class AnalyzerInfo(BaseModel):
@@ -33,5 +52,6 @@ class AnalyzerInfo(BaseModel):
 class AnalysisResult(BaseModel):
     source_file: str
     candidates: list[AnalysisCandidate] = Field(default_factory=list)
+    entities: list[AnalysisEntity] = Field(default_factory=list)
     analyzers: list[AnalyzerInfo] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)

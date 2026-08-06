@@ -240,6 +240,7 @@ def test_analysis_respects_an_explicit_empty_analyzer_list() -> None:
             _block("Label: Value", 10.0, 10.0, 80.0, 20.0),
         ]),
         analyzers=[],
+        entity_analyzers=[],
     )
 
     assert result.candidates == []
@@ -255,3 +256,4 @@ def test_analyze_file_runs_the_complete_pipeline() -> None:
     assert result.analyzers[0].name == "key_value"
     assert result.candidates
     assert all(candidate.evidence for candidate in result.candidates)
+    assert result.entities

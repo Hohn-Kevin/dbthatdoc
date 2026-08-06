@@ -5,6 +5,7 @@ from typing import Protocol
 
 from dbthatdoc.models import (
     AnalysisCandidate,
+    AnalysisEntity,
     AnalysisEvidence,
     AnalysisResult,
     AnalyzerInfo,
@@ -13,6 +14,8 @@ from dbthatdoc.models import (
     TextBlock,
     TextPosition,
 )
+
+from dbthatdoc.analysis.german import GermanEntityAnalyzer
 
 
 _MAX_LABEL_WORDS = 7
@@ -26,6 +29,17 @@ class Analyzer(Protocol):
         self,
         content: DocumentContent,
     ) -> list[AnalysisCandidate]: ...
+
+
+class EntityAnalyzer(Protocol):
+    name: str
+    version: str
+
+    def analyze(
+        self,
+        content: DocumentContent,
+        candidates: Sequence[AnalysisCandidate],
+    ) -> list[AnalysisEntity]: ...
 
 
 class KeyValueAnalyzer:
@@ -87,27 +101,45 @@ class KeyValueAnalyzer:
 def analyze_content(
     content: DocumentContent,
     analyzers: Sequence[Analyzer] | None = None,
+    entity_analyzers: Sequence[EntityAnalyzer] | None = None,
 ) -> AnalysisResult:
     selected_analyzers = (
         list(analyzers)
         if analyzers is not None
         else [KeyValueAnalyzer()]
     )
+    selected_entity_analyzers = (
+        list(entity_analyzers)
+        if entity_analyzers is not None
+        else [GermanEntityAnalyzer()]
+    )
     candidates: list[AnalysisCandidate] = []
+    entities: list[AnalysisEntity] = []
 
     for analyzer in selected_analyzers:
         candidates.extend(analyzer.analyze(content))
 
+    for analyzer in selected_entity_analyzers:
+        entities.extend(analyzer.analyze(content, candidates))
+
+    candidates = _attach_entities(candidates, entities)
+    all_analyzers = [
+        *selected_analyzers,
+        *selected_entity_analyzers,
+    ]
+
     return AnalysisResult(
         source_file=content.source_file,
         candidates=candidates,
+        entities=entities,
         analyzers=[
             AnalyzerInfo(
                 name=analyzer.name,
                 version=analyzer.version,
             )
-            for analyzer in selected_analyzers
+            for analyzer in all_analyzers
         ],
+        warnings=_validation_warnings(entities),
     )
 
 
@@ -363,3 +395,46 @@ def _average_confidence(
         return None
 
     return sum(confidences) / len(confidences)
+
+
+def _attach_entities(
+    candidates: list[AnalysisCandidate],
+    entities: list[AnalysisEntity],
+) -> list[AnalysisCandidate]:
+    entity_ids_by_block: dict[tuple[int, int], list[str]] = {}
+
+    for entity in entities:
+        for evidence in entity.evidence:
+            key = (evidence.page_number, evidence.block_index)
+            entity_ids_by_block.setdefault(key, []).append(entity.id)
+
+    enriched: list[AnalysisCandidate] = []
+
+    for candidate in candidates:
+        entity_ids: list[str] = []
+
+        for evidence in candidate.evidence:
+            key = (evidence.page_number, evidence.block_index)
+            for entity_id in entity_ids_by_block.get(key, []):
+                if entity_id not in entity_ids:
+                    entity_ids.append(entity_id)
+
+        enriched.append(candidate.model_copy(
+            update={"entity_ids": entity_ids}
+        ))
+
+    return enriched
+
+
+def _validation_warnings(
+    entities: list[AnalysisEntity],
+) -> list[str]:
+    return [
+        (
+            f"Invalid {entity.kind} candidate at page "
+            f"{entity.evidence[0].page_number}, block "
+            f"{entity.evidence[0].block_index}."
+        )
+        for entity in entities
+        if entity.validation_status == "invalid"
+    ]

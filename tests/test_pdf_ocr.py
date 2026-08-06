@@ -3,7 +3,9 @@ from pathlib import Path
 from dbthatdoc.extractors import extract_pdf_ocr
 
 
-SAMPLES_DIR = Path(__file__).parent.parent / "samples"
+SAMPLES_DIR = (
+    Path(__file__).parent.parent / "samples" / "invoices" / "1"
+)
 
 
 def test_extracts_positioned_elements_from_scan_pdf() -> None:

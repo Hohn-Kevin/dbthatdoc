@@ -124,8 +124,14 @@ def _is_geometric_noise(
         element.confidence is not None
         and element.confidence <= 0.50
     )
-    is_short_symbol = len(text) <= 2 and not any(
+    is_non_alphanumeric = not any(
         character.isalnum() for character in text
+    )
+    is_narrow_edge_mark = _width(element) <= max(
+        3.0,
+        typical_word_width * 0.10
+        if typical_word_width is not None
+        else 0.0,
     )
     is_edge_speck = (
         typical_word_width is not None
@@ -177,7 +183,12 @@ def _is_geometric_noise(
     if is_low_edge_confidence and is_sparse_wide_mark:
         return True
 
-    return is_short_symbol and is_low_confidence and is_near_page_edge
+    return (
+        is_non_alphanumeric
+        and is_narrow_edge_mark
+        and is_low_confidence
+        and is_near_page_edge
+    )
 
 
 def _group_elements_by_line(

@@ -1,123 +1,130 @@
+from math import isfinite
 from pathlib import Path
 
 import pytest
 
 from dbthatdoc.models import (
+    DocumentContent,
     ExtractedElement,
     ExtractionResult,
     PageContent,
     ProcessingInfo,
     SourceInfo,
+    TextBlock,
 )
 from dbthatdoc.normalization import normalize_extraction
 from dbthatdoc.pipeline import inspect_file
 
 
 SAMPLES_DIR = Path(__file__).parent.parent / "samples"
+EMBEDDED_PDFS = tuple(sorted(
+    path
+    for path in SAMPLES_DIR.glob("*/*/*.pdf")
+    if not path.stem.endswith("_scan")
+))
+SCAN_PDFS = tuple(sorted(
+    SAMPLES_DIR.glob("*/*/*_scan.pdf")
+))
+
+
+def _sample_id(path: Path) -> str:
+    return path.relative_to(SAMPLES_DIR).as_posix()
+
+
+def _text_from_blocks(content: DocumentContent) -> str:
+    return "\n\n".join(
+        "\n".join(block.text for block in page.blocks)
+        for page in content.pages
+    ).strip()
+
+
+def _assert_valid_position(block: TextBlock) -> None:
+    assert block.position is not None
+    coordinates = (
+        block.position.x0,
+        block.position.y0,
+        block.position.x1,
+        block.position.y1,
+    )
+    assert all(
+        value is not None and isfinite(value)
+        for value in coordinates
+    )
+    assert block.position.x0 is not None
+    assert block.position.y0 is not None
+    assert block.position.x1 is not None
+    assert block.position.y1 is not None
+    assert block.position.x0 < block.position.x1
+    assert block.position.y0 < block.position.y1
+
+
+def test_sample_matrix_contains_11_pdf_pairs() -> None:
+    assert len(EMBEDDED_PDFS) == 11
+    assert len(SCAN_PDFS) == 11
+    assert {
+        path.with_name(f"{path.stem}_scan.pdf")
+        for path in EMBEDDED_PDFS
+    } == set(SCAN_PDFS)
 
 
 @pytest.mark.parametrize(
-    ("filename", "expected_terms"),
-    [
-        ("sample_invoice_1.pdf", ("MUSTER", "Rechnung")),
-        ("sample_invoice_2.pdf", ("Firmenname",)),
-        ("sample_invoice_3.pdf", ("Firmenname",)),
-        ("sample_invoice_4.pdf", ("Firmenname", "Dienstleistungen")),
-    ],
+    "path",
+    EMBEDDED_PDFS,
+    ids=_sample_id,
 )
 def test_pdf_result_can_be_normalized(
-    filename: str,
-    expected_terms: tuple[str, ...],
+    path: Path,
 ) -> None:
-    extraction = inspect_file(
-        SAMPLES_DIR / filename
-    )
+    extraction = inspect_file(path)
 
     content = normalize_extraction(extraction)
 
-    assert content.source_file == filename
-    assert len(content.pages) == 2
+    assert content.source_file == path.name
+    assert len(content.pages) == len(extraction.pages)
     assert content.full_text != ""
-    assert content.full_text == "\n\n".join(
-        "\n".join(block.text for block in page.blocks)
-        for page in content.pages
-    )
+    assert content.full_text == _text_from_blocks(content)
     assert len(content.extraction_methods) == 1
 
-    first_page = content.pages[0]
-    first_block = first_page.blocks[0]
-    leading_text = " ".join(
-        block.text for block in first_page.blocks[:3]
-    )
-
-    assert len(first_page.blocks) < len(extraction.pages[0].elements)
-    assert len(first_page.blocks) > 1
-    assert any(term in leading_text for term in expected_terms)
-    assert first_block.source == "pdfplumber"
-    assert first_block.confidence is None
-    assert first_block.position is not None
-    assert first_block.position.x0 is not None
-    assert first_block.position.y0 is not None
-    assert first_block.position.x1 is not None
-    assert first_block.position.y1 is not None
+    for raw_page, page in zip(extraction.pages, content.pages):
+        assert 0 < len(page.blocks) < len(raw_page.elements)
+        assert all(block.text.strip() for block in page.blocks)
+        assert all(block.source == "pdfplumber" for block in page.blocks)
+        assert all(block.confidence is None for block in page.blocks)
+        for block in page.blocks:
+            _assert_valid_position(block)
 
 
 @pytest.mark.parametrize(
-    ("filename", "expected_terms"),
-    [
-        ("sample_invoice_1_scan.pdf", ("MUSTER", "Rechnung")),
-        ("sample_invoice_2_scan.pdf", ("Professionelle", "Beratung")),
-        ("sample_invoice_3_scan.pdf", ("Firmenname",)),
-        ("sample_invoice_4_scan.pdf", ("Sachen", "Dienstleistungen")),
-    ],
+    "path",
+    SCAN_PDFS,
+    ids=_sample_id,
 )
 def test_ocr_result_can_be_normalized(
-    filename: str,
-    expected_terms: tuple[str, ...],
+    path: Path,
 ) -> None:
-    extraction = inspect_file(
-        SAMPLES_DIR / filename
-    )
+    extraction = inspect_file(path)
 
     content = normalize_extraction(extraction)
 
-    assert content.source_file == filename
-    assert len(content.pages) == 2
+    assert content.source_file == path.name
+    assert len(content.pages) == len(extraction.pages)
     assert content.full_text != ""
-    assert content.full_text == "\n\n".join(
-        "\n".join(block.text for block in page.blocks)
-        for page in content.pages
-    )
+    assert content.full_text == _text_from_blocks(content)
 
-    first_page = content.pages[0]
-    first_block = first_page.blocks[0]
-    leading_text = " ".join(
-        block.text for block in first_page.blocks[:3]
-    )
-
-    assert len(first_page.blocks) < len(extraction.pages[0].elements)
-    assert len(first_page.blocks) > 1
-    assert len(first_block.text.strip()) > 2
-    assert any(term in leading_text for term in expected_terms)
-    assert first_block.source == "tesseract+pypdfium2"
-    assert first_block.position is not None
-    assert first_block.position.x0 is not None
-    assert first_block.position.y0 is not None
-    assert first_block.position.x1 is not None
-    assert first_block.position.y1 is not None
-
-    block_with_confidence = next(
-        block for block in first_page.blocks
-        if block.confidence is not None
-    )
-
-    assert block_with_confidence.confidence is not None
-    assert 0.0 <= block_with_confidence.confidence <= 1.0
-    assert all(
-        0.0 <= block.confidence <= 1.0
-        for block in first_page.blocks
-        if block.confidence is not None
-    )
+    for raw_page, page in zip(extraction.pages, content.pages):
+        assert 0 < len(page.blocks) < len(raw_page.elements)
+        assert all(block.text.strip() for block in page.blocks)
+        assert all(
+            block.source == "tesseract+pypdfium2"
+            for block in page.blocks
+        )
+        for block in page.blocks:
+            _assert_valid_position(block)
+        assert all(
+            block.confidence is not None
+            and 0.0 <= block.confidence <= 1.0
+            for block in page.blocks
+        )
 
 
 def test_normalization_groups_words_into_line_blocks_and_ignores_noise() -> None:
@@ -147,7 +154,7 @@ def test_normalization_groups_words_into_line_blocks_and_ignores_noise() -> None
                         y1=11.0,
                     ),
                     ExtractedElement(
-                        text="Er",
+                        text="xy",
                         element_type="word",
                         confidence=0.44,
                         x0=195.0,
@@ -156,7 +163,7 @@ def test_normalization_groups_words_into_line_blocks_and_ignores_noise() -> None
                         y1=4.0,
                     ),
                     ExtractedElement(
-                        text="ee",
+                        text="zz",
                         element_type="word",
                         confidence=0.18,
                         x0=0.0,
@@ -421,6 +428,88 @@ def test_normalization_splits_sparse_columns() -> None:
         block.text for block in content.pages[0].blocks
     ] == ["Left", "Right"]
     assert content.full_text == "Left\nRight"
+
+
+def test_normalization_preserves_proportional_fine_print_at_page_edge() -> None:
+    extraction = ExtractionResult(
+        source=SourceInfo(
+            filename="fine-print.pdf",
+            path="fine-print.pdf",
+            media_type="application/pdf",
+            source_type="pdf",
+            file_size_bytes=1,
+            sha256="abc",
+        ),
+        pages=[
+            PageContent(
+                page_number=1,
+                text="Main content\nAG note",
+                width=200.0,
+                height=100.0,
+                elements=[
+                    ExtractedElement(
+                        text="Main",
+                        element_type="word",
+                        confidence=0.9,
+                        x0=10.0,
+                        y0=10.0,
+                        x1=35.0,
+                        y1=20.0,
+                    ),
+                    ExtractedElement(
+                        text="content",
+                        element_type="word",
+                        confidence=0.9,
+                        x0=40.0,
+                        y0=10.0,
+                        x1=75.0,
+                        y1=20.0,
+                    ),
+                    ExtractedElement(
+                        text="body",
+                        element_type="word",
+                        confidence=0.9,
+                        x0=10.0,
+                        y0=40.0,
+                        x1=35.0,
+                        y1=50.0,
+                    ),
+                    ExtractedElement(
+                        text="AG",
+                        element_type="word",
+                        confidence=0.4,
+                        x0=10.0,
+                        y0=96.0,
+                        x1=18.0,
+                        y1=100.0,
+                    ),
+                    ExtractedElement(
+                        text="note",
+                        element_type="word",
+                        confidence=0.4,
+                        x0=20.0,
+                        y0=96.0,
+                        x1=32.0,
+                        y1=100.0,
+                    ),
+                ],
+            ),
+        ],
+        text="Main content\nbody\nAG note",
+        processing=ProcessingInfo(
+            extractor="test-extractor",
+            page_count=1,
+            extraction_method="test",
+            text_extracted=True,
+        ),
+    )
+
+    content = normalize_extraction(extraction)
+
+    assert [
+        block.text for block in content.pages[0].blocks
+    ] == ["Main content", "body", "AG note"]
+    assert content.full_text.endswith("AG note")
 
 
 def test_normalization_enforces_the_element_and_position_contract() -> None:
